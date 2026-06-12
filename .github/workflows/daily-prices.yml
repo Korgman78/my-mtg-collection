@@ -1,0 +1,41 @@
+name: Daily price ingestion
+
+on:
+  schedule:
+    # 04:30 UTC : les bulk Scryfall sont régénérés dans la nuit (heure US).
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ingest Scryfall prices
+        run: node scripts/ingest.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Commit daily archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+          git add archives/
+          git diff --cached --quiet || git commit -m "prices: archive $(date -u +%F)"
+          git push
