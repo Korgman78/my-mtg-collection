@@ -14,14 +14,16 @@ couloirs de prix et alertes. Données cartes et prix : [Scryfall](https://scryfa
   et archive un extrait `(id, prix)` de toutes les cartes dans `archives/`.
 - **`archives/`** : un `csv.gz` (~2-3 Mo) par jour. Permet de reconstruire
   l'historique d'une carte ajoutée à la collection après coup (`npm run backfill`).
-- **App mobile** (phase 1) : Expo / React Native — à venir dans `app/`.
+- **App mobile « Grimoire »** (`mobile/`) : Expo / React Native (SDK 56, expo-router).
+  Auth email/mot de passe, dossiers, recherche autocomplete Scryfall, fiche carte
+  avec graphe de prix et couloir P10–P90.
 
 ## Mise en route (une seule fois)
 
 1. **Créer le projet Supabase** sur [supabase.com](https://supabase.com)
    (si besoin, mettre en pause un ancien projet : Settings → General → Pause project).
-2. **Appliquer la migration** : dashboard → SQL Editor → coller le contenu de
-   `supabase/migrations/20260612000000_init.sql` → Run.
+2. **Appliquer les migrations** : dashboard → SQL Editor → coller puis exécuter,
+   dans l'ordre, le contenu de chaque fichier de `supabase/migrations/`.
    (Ou avec la CLI : `supabase link --project-ref <ref>` puis `supabase db push`.)
 3. **Récupérer la connection string** : dashboard → Connect →
    *Session pooler* (port 5432). ⚠️ Prendre le **pooler** (`...pooler.supabase.com`),
@@ -34,6 +36,18 @@ couloirs de prix et alertes. Données cartes et prix : [Scryfall](https://scryfa
    Le run doit se terminer en vert et commiter `archives/<date>.csv.gz`.
 
 Ensuite le job tourne tout seul chaque nuit à 04:30 UTC.
+
+## Lancer l'app mobile
+
+1. `cd mobile` puis copie `.env.example` vers `.env` et renseigne
+   `EXPO_PUBLIC_SUPABASE_ANON_KEY` (dashboard Supabase → Settings → API Keys →
+   clé `anon` / `publishable`).
+2. Optionnel mais recommandé pour tester vite : dashboard → Authentication →
+   Sign In / Up → Email → désactiver **Confirm email** (sinon chaque compte
+   doit cliquer un lien de confirmation).
+3. `npm install` (si pas déjà fait) puis `npx expo start`.
+4. Scanne le QR code avec l'app **Expo Go** (iOS/Android), ou tape `w` pour
+   ouvrir la version web.
 
 ## Scripts
 
@@ -56,7 +70,7 @@ Ensuite le job tourne tout seul chaque nuit à 04:30 UTC.
 ## Roadmap
 
 - [x] **Phase 0** — fondation prix : schéma, ingestion quotidienne, archives, backfill
-- [ ] **Phase 1** — app Expo : auth, folders, recherche autocomplete, fiche carte + graphe
+- [x] **Phase 1** — app Expo : auth, folders, recherche autocomplete, fiche carte + graphe
 - [ ] **Phase 2** — moteur d'alertes modulaire, push, digest hebdo par email (Resend)
 - [ ] **Phase 3** — scanner v1 (photo → reconnaissance pHash)
 - [ ] **Phase 4** — scanner temps réel on-device (mode rafale)
