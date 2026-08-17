@@ -2,10 +2,12 @@
 
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { CreateRuleModal } from '@/components/create-rule-modal';
 import { PriceChart } from '@/components/price-chart';
-import { AppText, ChangeBadge, FinishBadge, Loading, Screen, Surface } from '@/components/ui';
+import { AppText, Button, ChangeBadge, FinishBadge, Loading, Screen, Surface } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useCardDetail } from '@/lib/collection';
 import { formatDate, formatEur } from '@/lib/format';
@@ -15,6 +17,7 @@ export default function CardScreen() {
   const { cardId, itemId } = useLocalSearchParams<{ cardId: string; itemId?: string }>();
   const router = useRouter();
   const { data, isLoading } = useCardDetail(cardId, itemId);
+  const [alerting, setAlerting] = useState(false);
 
   if (isLoading || !data) return <Loading />;
   const { card, snapshots, stats, item } = data;
@@ -109,10 +112,18 @@ export default function CardScreen() {
 
         <PriceChart points={points} band={band} />
 
+        <Button label="🔔 Créer une alerte" variant="ghost" onPress={() => setAlerting(true)} />
+
         <AppText variant="small" style={{ textAlign: 'center' }}>
           Prix Cardmarket (EUR) · Powered by Scryfall
         </AppText>
       </ScrollView>
+
+      <CreateRuleModal
+        visible={alerting}
+        onClose={() => setAlerting(false)}
+        preset={{ cardId: card.id, cardName: card.name, finish }}
+      />
     </Screen>
   );
 }

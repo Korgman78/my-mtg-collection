@@ -6,6 +6,7 @@ import { Alert, FlatList, Modal, Pressable, StyleSheet, View } from 'react-nativ
 
 import { AppText, Button, EmptyState, Loading, Screen, Surface, TextField } from '@/components/ui';
 import { Colors, FolderColors, Radius, Spacing } from '@/constants/theme';
+import { useUnseenAlertCount } from '@/lib/alerts';
 import { useCreateFolder, useDashboard, useDeleteFolder, type DashboardData } from '@/lib/collection';
 import { formatEur } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -51,9 +52,12 @@ export default function DashboardScreen() {
           <View style={styles.header}>
             <View style={styles.topRow}>
               <AppText variant="title">Grimoire</AppText>
-              <Pressable onPress={() => supabase.auth.signOut()} hitSlop={12}>
-                <AppText variant="secondary">Déconnexion</AppText>
-              </Pressable>
+              <View style={styles.topActions}>
+                <AlertsBell />
+                <Pressable onPress={() => supabase.auth.signOut()} hitSlop={12}>
+                  <AppText variant="secondary">Déconnexion</AppText>
+                </Pressable>
+              </View>
             </View>
             <Surface style={styles.valueCard}>
               <AppText variant="secondary">Valeur de la collection</AppText>
@@ -98,6 +102,21 @@ export default function DashboardScreen() {
       />
       <CreateFolderModal visible={creating} onClose={() => setCreating(false)} />
     </Screen>
+  );
+}
+
+function AlertsBell() {
+  const router = useRouter();
+  const { data: unseen = 0 } = useUnseenAlertCount();
+  return (
+    <Pressable onPress={() => router.push('/alerts')} hitSlop={12} style={styles.bell}>
+      <AppText style={{ fontSize: 22 }}>🔔</AppText>
+      {unseen > 0 ? (
+        <View style={styles.bellBadge}>
+          <AppText style={styles.bellBadgeText}>{unseen > 9 ? '9+' : unseen}</AppText>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -168,6 +187,21 @@ const styles = StyleSheet.create({
   list: { padding: Spacing.three, gap: Spacing.three },
   header: { gap: Spacing.three, marginBottom: Spacing.one },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  bell: { position: 'relative', padding: Spacing.one },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  bellBadgeText: { color: Colors.text, fontSize: 11, fontWeight: '700' },
   valueCard: { gap: Spacing.one, alignItems: 'flex-start' },
   totalValue: {
     fontSize: 40,

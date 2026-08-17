@@ -31,6 +31,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      - name: Send immediate alert emails
+        run: node scripts/send-digest.mjs --mode immediate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DIGEST_FROM: ${{ secrets.DIGEST_FROM }}
+
       - name: Commit daily archive
         run: |
           git config user.name "github-actions[bot]"

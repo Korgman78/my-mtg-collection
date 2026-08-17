@@ -123,6 +123,14 @@ async function main() {
     throw err;
   }
 
+  // Évaluation des alertes (tolérante : la migration peut ne pas être appliquée).
+  try {
+    const fired = await db.query('select public.evaluate_alert_rules() as count');
+    console.log(`Alertes déclenchées : ${fired.rows[0].count}`);
+  } catch (err) {
+    console.warn(`Évaluation des alertes sautée : ${err.message}`);
+  }
+
   console.log(`Snapshots insérés : ${snapshots.length} | métadonnées rafraîchies : ${meta.length}`);
   await db.end();
 }
