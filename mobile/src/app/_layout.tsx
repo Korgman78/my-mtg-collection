@@ -17,10 +17,11 @@ const navTheme = {
   colors: {
     ...DarkTheme.colors,
     background: Colors.bg,
-    card: Colors.surface,
+    card: Colors.bg,
     text: Colors.text,
     primary: Colors.accent,
     border: Colors.border,
+    notification: Colors.accent,
   },
 };
 

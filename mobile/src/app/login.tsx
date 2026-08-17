@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 
+import { Icon } from '@/components/icons';
 import { AppText, Button, Screen, TextField } from '@/components/ui';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Space } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
@@ -13,12 +14,15 @@ export default function LoginScreen() {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const isSignup = mode === 'signup';
+  const passwordTooShort = password.length > 0 && password.length < 6;
+
   async function submit() {
     setError(null);
     setInfo(null);
     setLoading(true);
     try {
-      if (mode === 'signin') {
+      if (!isSignup) {
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) setError(err.message);
       } else {
@@ -37,16 +41,19 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}>
         <View style={styles.hero}>
-          <AppText style={styles.glyph}>✦</AppText>
+          <View style={styles.mark}>
+            <Icon name="layers" size={22} color={Colors.text} strokeWidth={1.8} />
+          </View>
           <AppText variant="title">Grimoire</AppText>
-          <AppText variant="secondary" style={{ textAlign: 'center' }}>
-            Ta collection Magic, ses prix,{'\n'}et leurs mouvements.
+          <AppText variant="body" style={styles.tagline}>
+            Ta collection Magic, ses prix, et leurs mouvements.
           </AppText>
         </View>
 
         <View style={styles.form}>
           <TextField
-            placeholder="Email"
+            label="Email"
+            placeholder="toi@exemple.com"
             autoCapitalize="none"
             autoComplete="email"
             keyboardType="email-address"
@@ -54,32 +61,57 @@ export default function LoginScreen() {
             onChangeText={setEmail}
           />
           <TextField
-            placeholder="Mot de passe"
+            label="Mot de passe"
+            placeholder={isSignup ? '6 caractères minimum' : '••••••••'}
             secureTextEntry
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            autoComplete={isSignup ? 'new-password' : 'current-password'}
             value={password}
             onChangeText={setPassword}
+            error={passwordTooShort ? '6 caractères minimum.' : undefined}
           />
-          {error ? <AppText style={{ color: Colors.danger }}>{error}</AppText> : null}
-          {info ? <AppText style={{ color: Colors.up }}>{info}</AppText> : null}
+
+          {error ? (
+            <View style={[styles.notice, styles.noticeError]}>
+              <AppText variant="caption" style={{ color: Colors.danger }}>
+                {error}
+              </AppText>
+            </View>
+          ) : null}
+          {info ? (
+            <View style={[styles.notice, styles.noticeInfo]}>
+              <AppText variant="caption" style={{ color: Colors.up }}>
+                {info}
+              </AppText>
+            </View>
+          ) : null}
+
           <Button
-            label={mode === 'signin' ? 'Se connecter' : 'Créer le compte'}
+            label={isSignup ? 'Créer le compte' : 'Se connecter'}
+            size="lg"
             onPress={submit}
             loading={loading}
             disabled={!email || password.length < 6}
           />
-          <Button
-            label={mode === 'signin' ? 'Pas encore de compte ? Inscription' : 'Déjà un compte ? Connexion'}
-            variant="ghost"
+
+          <Pressable
+            accessibilityRole="button"
             onPress={() => {
-              setMode(mode === 'signin' ? 'signup' : 'signin');
+              setMode(isSignup ? 'signin' : 'signup');
               setError(null);
               setInfo(null);
             }}
-          />
+            style={styles.switchMode}
+            hitSlop={8}>
+            <AppText variant="caption">
+              {isSignup ? 'Déjà un compte ?' : 'Pas encore de compte ?'}{' '}
+              <AppText variant="caption" style={styles.switchLink}>
+                {isSignup ? 'Se connecter' : 'Créer un compte'}
+              </AppText>
+            </AppText>
+          </Pressable>
         </View>
 
-        <AppText variant="small" style={styles.attribution}>
+        <AppText variant="caption" style={styles.attribution}>
           Données cartes et prix : Scryfall
         </AppText>
       </KeyboardAvoidingView>
@@ -88,9 +120,25 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.four, justifyContent: 'center' },
-  hero: { alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.five },
-  glyph: { fontSize: 40, color: Colors.accent },
-  form: { gap: Spacing.three },
-  attribution: { textAlign: 'center', marginTop: Spacing.five },
+  container: { flex: 1, padding: Space.xl, justifyContent: 'center', gap: Space.xxl },
+  hero: { alignItems: 'center', gap: Space.sm },
+  mark: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Space.xs,
+  },
+  tagline: { color: Colors.textSecondary, textAlign: 'center', maxWidth: 280 },
+  form: { gap: Space.lg },
+  notice: { borderRadius: Radius.md, padding: Space.md },
+  noticeError: { backgroundColor: Colors.dangerSoft },
+  noticeInfo: { backgroundColor: Colors.upSoft },
+  switchMode: { alignSelf: 'center', paddingVertical: Space.xs },
+  switchLink: { color: Colors.text, fontWeight: '600' },
+  attribution: { textAlign: 'center', color: Colors.textTertiary },
 });

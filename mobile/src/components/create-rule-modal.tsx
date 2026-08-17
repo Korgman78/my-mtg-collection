@@ -1,59 +1,20 @@
-// Création d'une règle d'alerte. Utilisé depuis l'écran Alertes (portée
+// Création d'une règle d'alerte. Utilisée depuis l'écran Alertes (portée
 // collection/dossier) et depuis la fiche carte (portée carte, pré-remplie).
+//
+// Le formulaire affiche en permanence une phrase qui résume la règle en
+// cours : c'est ce qui rend compréhensible un réglage à cinq dimensions.
 
 import { useQuery } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, TextField } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { AppText, Button, FormField, Segmented, Sheet, TextField } from '@/components/ui';
+import { Colors, Control, Radius, Space } from '@/constants/theme';
 import { useCreateRule, type AlertMetric } from '@/lib/alerts';
 import { supabase } from '@/lib/supabase';
 import type { Finish, Folder } from '@/lib/types';
 
 type Preset = { cardId: string; cardName: string; finish: Finish };
-
-function Choice<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <View style={styles.choiceRow}>
-      {options.map((opt) => (
-        <Pressable
-          key={opt.value}
-          onPress={() => onChange(opt.value)}
-          style={[styles.choice, value === opt.value && styles.choiceSelected]}>
-          <AppText
-            variant="small"
-            style={{
-              fontWeight: '600',
-              textAlign: 'center',
-              color: value === opt.value ? Colors.text : Colors.textSecondary,
-            }}>
-            {opt.label}
-          </AppText>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <View style={{ gap: Spacing.one }}>
-      <AppText variant="small" style={{ fontWeight: '600' }}>
-        {label}
-      </AppText>
-      {children}
-    </View>
-  );
-}
 
 export function CreateRuleModal({
   visible,
@@ -85,7 +46,14 @@ export function CreateRuleModal({
 
   const needsThreshold = metric !== 'corridor_breakout';
   const parsedThreshold = Number(threshold.replace(',', '.'));
-  const valid = !needsThreshold || (Number.isFinite(parsedThreshold) && parsedThreshold > 0);
+  const thresholdValid = !needsThreshold || (Number.isFinite(parsedThreshold) && parsedThreshold > 0);
+  const scopeValid = !!preset || scope === 'collection' || !!folderId;
+
+  const scopeText = preset
+    ? preset.cardName
+    : scope === 'collection'
+      ? 'ta collection'
+      : (folders.data?.find((f) => f.id === folderId)?.name ?? 'un dossier');
 
   function submit() {
     createRule.mutate(
@@ -98,7 +66,8 @@ export function CreateRuleModal({
         metric,
         window_days: windowDays,
         threshold: needsThreshold ? parsedThreshold : null,
-        direction: metric === 'threshold_above' ? 'up' : metric === 'threshold_below' ? 'down' : direction,
+        direction:
+          metric === 'threshold_above' ? 'up' : metric === 'threshold_below' ? 'down' : direction,
         channel,
       },
       { onSuccess: onClose }
@@ -106,174 +75,194 @@ export function CreateRuleModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => {}}>
-          <ScrollView contentContainerStyle={{ gap: Spacing.three }}>
-            <AppText variant="heading">
-              {preset ? `Alerte · ${preset.cardName}` : 'Nouvelle alerte'}
-            </AppText>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title={preset ? `Alerte · ${preset.cardName}` : 'Nouvelle alerte'}
+      footer={
+        <Button
+          label="Créer l'alerte"
+          icon="check"
+          onPress={submit}
+          loading={createRule.isPending}
+          disabled={!thresholdValid || !scopeValid}
+        />
+      }>
+      <View style={styles.summary}>
+        <AppText variant="overline">Résumé</AppText>
+        <AppText variant="body">
+          {summarise({ scopeText, metric, windowDays, direction, threshold: parsedThreshold, channel })}
+        </AppText>
+      </View>
 
-            {!preset && (
-              <Field label="Portée">
-                <Choice
-                  options={[
-                    { value: 'collection', label: 'Toute la collection' },
-                    { value: 'folder', label: 'Un dossier' },
-                  ]}
-                  value={scope}
-                  onChange={setScope}
-                />
-                {scope === 'folder' && (
-                  <View style={styles.folderList}>
-                    {(folders.data ?? []).map((f) => (
-                      <Pressable
-                        key={f.id}
-                        onPress={() => setFolderId(f.id)}
-                        style={[styles.choice, folderId === f.id && styles.choiceSelected]}>
-                        <AppText
-                          variant="small"
-                          numberOfLines={1}
-                          style={{ color: folderId === f.id ? Colors.text : Colors.textSecondary }}>
-                          {f.name}
-                        </AppText>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-              </Field>
-            )}
-
-            <Field label="Déclencheur">
-              <View style={styles.metricGrid}>
-                {(
-                  [
-                    { value: 'pct_change', label: 'Variation %' },
-                    { value: 'corridor_breakout', label: 'Sortie du couloir' },
-                    { value: 'threshold_above', label: 'Prix ≥ seuil €' },
-                    { value: 'threshold_below', label: 'Prix ≤ seuil €' },
-                  ] as { value: AlertMetric; label: string }[]
-                ).map((opt) => (
+      {!preset && (
+        <FormField label="Portée">
+          <Segmented
+            options={[
+              { value: 'collection', label: 'Toute la collection' },
+              { value: 'folder', label: 'Un dossier' },
+            ]}
+            value={scope}
+            onChange={setScope}
+          />
+          {scope === 'folder' && (
+            <View style={styles.folderList}>
+              {(folders.data ?? []).map((f) => {
+                const active = folderId === f.id;
+                return (
                   <Pressable
-                    key={opt.value}
-                    onPress={() => setMetric(opt.value)}
-                    style={[styles.metricCell, metric === opt.value && styles.choiceSelected]}>
+                    key={f.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setFolderId(f.id)}
+                    style={[styles.folderChip, active && styles.folderChipActive]}>
                     <AppText
-                      variant="small"
-                      style={{
-                        fontWeight: '600',
-                        textAlign: 'center',
-                        color: metric === opt.value ? Colors.text : Colors.textSecondary,
-                      }}>
-                      {opt.label}
+                      variant="caption"
+                      numberOfLines={1}
+                      style={active ? { color: Colors.text, fontWeight: '600' } : undefined}>
+                      {f.name}
                     </AppText>
                   </Pressable>
-                ))}
-              </View>
-            </Field>
+                );
+              })}
+              {folders.data?.length === 0 ? (
+                <AppText variant="caption">Aucun dossier à surveiller pour l&apos;instant.</AppText>
+              ) : null}
+            </View>
+          )}
+        </FormField>
+      )}
 
-            {metric === 'pct_change' && (
-              <>
-                <Field label="Fenêtre">
-                  <Choice
-                    options={[
-                      { value: '1', label: '1 jour' },
-                      { value: '7', label: '7 jours' },
-                      { value: '30', label: '30 jours' },
-                    ]}
-                    value={String(windowDays) as '1' | '7' | '30'}
-                    onChange={(v) => setWindowDays(Number(v) as 1 | 7 | 30)}
-                  />
-                </Field>
-                <Field label="Direction">
-                  <Choice
-                    options={[
-                      { value: 'both', label: 'Les deux' },
-                      { value: 'up', label: 'Hausses' },
-                      { value: 'down', label: 'Baisses' },
-                    ]}
-                    value={direction}
-                    onChange={setDirection}
-                  />
-                </Field>
-              </>
-            )}
+      <FormField label="Déclencheur">
+        <Segmented
+          columns
+          options={[
+            { value: 'pct_change', label: 'Variation %' },
+            { value: 'corridor_breakout', label: 'Sortie du couloir' },
+            { value: 'threshold_above', label: 'Prix ≥ seuil' },
+            { value: 'threshold_below', label: 'Prix ≤ seuil' },
+          ]}
+          value={metric}
+          onChange={setMetric}
+        />
+        <AppText variant="caption">{METRIC_HELP[metric]}</AppText>
+      </FormField>
 
-            {needsThreshold && (
-              <Field label={metric === 'pct_change' ? 'Seuil (%)' : 'Seuil (€)'}>
-                <TextField
-                  value={threshold}
-                  onChangeText={setThreshold}
-                  keyboardType="decimal-pad"
-                  placeholder={metric === 'pct_change' ? '10' : '50'}
-                />
-              </Field>
-            )}
-
-            <Field label="Notification">
-              <Choice
-                options={[
-                  { value: 'digest', label: 'Récap hebdo' },
-                  { value: 'immediate', label: 'Email immédiat' },
-                ]}
-                value={channel}
-                onChange={setChannel}
-              />
-            </Field>
-
-            {createRule.isError ? (
-              <AppText style={{ color: Colors.danger }}>{createRule.error.message}</AppText>
-            ) : null}
-
-            <Button
-              label="Créer l'alerte"
-              onPress={submit}
-              loading={createRule.isPending}
-              disabled={!valid || (!preset && scope === 'folder' && !folderId)}
+      {metric === 'pct_change' && (
+        <>
+          <FormField label="Fenêtre">
+            <Segmented
+              options={[
+                { value: '1', label: '1 jour' },
+                { value: '7', label: '7 jours' },
+                { value: '30', label: '30 jours' },
+              ]}
+              value={String(windowDays) as '1' | '7' | '30'}
+              onChange={(v) => setWindowDays(Number(v) as 1 | 7 | 30)}
             />
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+          </FormField>
+          <FormField label="Direction">
+            <Segmented
+              options={[
+                { value: 'both', label: 'Les deux' },
+                { value: 'up', label: 'Hausses' },
+                { value: 'down', label: 'Baisses' },
+              ]}
+              value={direction}
+              onChange={setDirection}
+            />
+          </FormField>
+        </>
+      )}
+
+      {needsThreshold && (
+        <TextField
+          label={metric === 'pct_change' ? 'Seuil (%)' : 'Seuil (€)'}
+          value={threshold}
+          onChangeText={setThreshold}
+          keyboardType="decimal-pad"
+          placeholder={metric === 'pct_change' ? '10' : '50'}
+          error={thresholdValid ? undefined : 'Entre un nombre supérieur à 0.'}
+        />
+      )}
+
+      <FormField label="Notification">
+        <Segmented
+          options={[
+            { value: 'digest', label: 'Récap hebdo' },
+            { value: 'immediate', label: 'Email immédiat' },
+          ]}
+          value={channel}
+          onChange={setChannel}
+        />
+      </FormField>
+
+      {createRule.isError ? (
+        <AppText variant="caption" style={{ color: Colors.danger }}>
+          {createRule.error.message}
+        </AppText>
+      ) : null}
+    </Sheet>
   );
 }
 
+const METRIC_HELP: Record<AlertMetric, string> = {
+  pct_change: 'Se déclenche quand le prix bouge de plus que le seuil sur la fenêtre choisie.',
+  corridor_breakout:
+    'Se déclenche quand le prix sort de son couloir habituel (percentiles 10 et 90 sur 30 jours). Pas de seuil à régler.',
+  threshold_above: 'Se déclenche quand le prix atteint ou dépasse le montant fixé.',
+  threshold_below: 'Se déclenche quand le prix descend au niveau du montant fixé ou en dessous.',
+};
+
+function summarise({
+  scopeText,
+  metric,
+  windowDays,
+  direction,
+  threshold,
+  channel,
+}: {
+  scopeText: string;
+  metric: AlertMetric;
+  windowDays: number;
+  direction: 'up' | 'down' | 'both';
+  threshold: number;
+  channel: 'digest' | 'immediate';
+}): string {
+  const amount = Number.isFinite(threshold) ? threshold.toString().replace('.', ',') : '…';
+  const how =
+    channel === 'immediate' ? 'par email dès le lendemain' : 'dans le récap hebdomadaire du dimanche';
+
+  if (metric === 'corridor_breakout')
+    return `On te prévient ${how} quand une carte de ${scopeText} sort de son couloir de prix habituel.`;
+  if (metric === 'threshold_above')
+    return `On te prévient ${how} quand une carte de ${scopeText} atteint ${amount} €.`;
+  if (metric === 'threshold_below')
+    return `On te prévient ${how} quand une carte de ${scopeText} descend à ${amount} €.`;
+
+  const move =
+    direction === 'up' ? 'monte' : direction === 'down' ? 'baisse' : 'bouge';
+  return `On te prévient ${how} quand une carte de ${scopeText} ${move} de plus de ${amount} % sur ${windowDays} jour${windowDays > 1 ? 's' : ''}.`;
+}
+
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    padding: Spacing.four,
-  },
-  card: {
-    backgroundColor: Colors.surface,
+  summary: {
+    gap: Space.xs,
+    padding: Space.lg,
     borderRadius: Radius.lg,
-    padding: Spacing.four,
-    maxHeight: '85%',
+    backgroundColor: Colors.accentSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.accentBorder,
   },
-  choiceRow: { flexDirection: 'row', gap: Spacing.two },
-  choice: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
+  folderList: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm, marginTop: Space.xs },
+  folderChip: {
+    minHeight: Control.sm,
     justifyContent: 'center',
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.md,
     backgroundColor: Colors.surfaceAlt,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
   },
-  choiceSelected: { backgroundColor: Colors.accentSoft, borderWidth: 1, borderColor: Colors.accent },
-  folderList: { gap: Spacing.one, marginTop: Spacing.one },
-  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  metricCell: {
-    flexBasis: '47%',
-    flexGrow: 1,
-    minHeight: 40,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceAlt,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-  },
+  folderChipActive: { backgroundColor: Colors.surfaceHover, borderColor: Colors.borderStrong },
 });

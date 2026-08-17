@@ -1,20 +1,31 @@
-// Graphe de prix : ligne + aire dégradée, et couloir P10–P90 en bande translucide.
-// SVG maison : aucun style imposé, contrôle total du rendu.
+// Graphe de prix : une seule série (le prix), plus le couloir P10–P90 en
+// bande de fond. SVG maison, contrôle total du rendu.
+//
+// Choix de lecture :
+//   - une seule série → pas de légende, le titre de section la nomme ;
+//   - la série porte l'encre principale, pas l'accent : l'accent reste
+//     réservé aux choses sur lesquelles on peut cliquer ;
+//   - le couloir est un décor de fond (neutre, faible opacité, bornes
+//     pointillées) pour ne jamais être confondu avec de la donnée ;
+//   - axes récessifs : quatre repères de texte, aucune grille.
+//
+// Toucher le graphe pose un curseur qui donne la date et le prix exacts.
 
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import { StyleSheet, View, type GestureResponderEvent } from 'react-native';
+import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
-import { formatDate, formatEur } from '@/lib/format';
 import { AppText } from '@/components/ui';
+import { Icon } from '@/components/icons';
+import { Colors, Fonts, Radius, Space } from '@/constants/theme';
+import { formatDate, formatEur } from '@/lib/format';
 
 export type ChartPoint = { date: string; value: number };
 
-const HEIGHT = 190;
-const PAD_TOP = 26;
-const PAD_BOTTOM = 24;
-const PAD_X = 6;
+const HEIGHT = 200;
+const PAD_TOP = 24;
+const PAD_BOTTOM = 26;
+const PAD_X = 12;
 
 export function PriceChart({
   points,
@@ -24,12 +35,14 @@ export function PriceChart({
   band?: { low: number; high: number } | null;
 }) {
   const [width, setWidth] = useState(0);
+  const [cursor, setCursor] = useState<number | null>(null);
 
   if (points.length < 2) {
     return (
       <View style={styles.placeholder}>
-        <AppText variant="secondary" style={{ textAlign: 'center' }}>
-          📈 L&apos;historique se construit.{'\n'}Un nouveau point de prix arrive chaque nuit.
+        <Icon name="chart" size={20} color={Colors.textTertiary} />
+        <AppText variant="body" style={styles.placeholderText}>
+          L&apos;historique se construit. Un nouveau point de prix arrive chaque nuit.
         </AppText>
       </View>
     );
@@ -42,7 +55,7 @@ export function PriceChart({
     min -= 0.5;
     max += 0.5;
   }
-  const margin = (max - min) * 0.08;
+  const margin = (max - min) * 0.1;
   min -= margin;
   max += margin;
 
@@ -55,52 +68,167 @@ export function PriceChart({
   const area = `${line} L ${x(points.length - 1)} ${HEIGHT - PAD_BOTTOM} L ${x(0)} ${HEIGHT - PAD_BOTTOM} Z`;
   const last = points[points.length - 1];
 
+  const active = cursor === null ? null : points[cursor];
+  const activeX = cursor === null ? 0 : x(cursor);
+
+  function handleTouch(e: GestureResponderEvent) {
+    if (innerW <= 0) return;
+    const local = e.nativeEvent.locationX - PAD_X;
+    const ratio = Math.max(0, Math.min(1, local / innerW));
+    setCursor(Math.round(ratio * (points.length - 1)));
+  }
+
   return (
     <View style={styles.container} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      {width > 0 && (
-        <Svg width={width} height={HEIGHT}>
-          <Defs>
-            <LinearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={Colors.accent} stopOpacity="0.28" />
-              <Stop offset="1" stopColor={Colors.accent} stopOpacity="0" />
-            </LinearGradient>
-          </Defs>
+      <View
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={handleTouch}
+        onResponderMove={handleTouch}
+        onResponderRelease={() => setCursor(null)}
+        onResponderTerminate={() => setCursor(null)}>
+        {width > 0 && (
+          <Svg width={width} height={HEIGHT}>
+            <Defs>
+              <LinearGradient id="priceArea" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={Colors.text} stopOpacity="0.16" />
+                <Stop offset="1" stopColor={Colors.text} stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
 
-          {band && band.high > band.low && (
-            <Rect
-              x={PAD_X}
-              y={y(band.high)}
-              width={innerW}
-              height={Math.max(2, y(band.low) - y(band.high))}
-              fill={Colors.accentSoft}
-              rx={4}
+            {/* Couloir habituel : décor de fond, bornes pointillées. */}
+            {band && band.high > band.low && (
+              <G>
+                <Rect
+                  x={PAD_X}
+                  y={y(band.high)}
+                  width={innerW}
+                  height={Math.max(2, y(band.low) - y(band.high))}
+                  fill={Colors.text}
+                  fillOpacity={0.05}
+                  rx={4}
+                />
+                <Line
+                  x1={PAD_X}
+                  y1={y(band.high)}
+                  x2={width - PAD_X}
+                  y2={y(band.high)}
+                  stroke={Colors.borderStrong}
+                  strokeWidth={1}
+                  strokeDasharray="3 4"
+                />
+                <Line
+                  x1={PAD_X}
+                  y1={y(band.low)}
+                  x2={width - PAD_X}
+                  y2={y(band.low)}
+                  stroke={Colors.borderStrong}
+                  strokeWidth={1}
+                  strokeDasharray="3 4"
+                />
+              </G>
+            )}
+
+            <Path d={area} fill="url(#priceArea)" />
+            <Path
+              d={line}
+              stroke={Colors.text}
+              strokeWidth={2}
+              fill="none"
+              strokeLinejoin="round"
+              strokeLinecap="round"
             />
-          )}
 
-          <Path d={area} fill="url(#area)" />
-          <Path d={line} stroke={Colors.accent} strokeWidth={2.5} fill="none" strokeLinejoin="round" />
-          <Circle cx={x(points.length - 1)} cy={y(last.value)} r={4.5} fill={Colors.accent} />
+            {/* Dernier point : anneau de surface pour le détacher de l'aire. */}
+            <Circle
+              cx={x(points.length - 1)}
+              cy={y(last.value)}
+              r={4.5}
+              fill={Colors.text}
+              stroke={Colors.surface}
+              strokeWidth={2}
+            />
 
-          <SvgText x={PAD_X} y={16} fill={Colors.textSecondary} fontSize={11}>
-            max {formatEur(Math.max(...values))}
-          </SvgText>
-          <SvgText
-            x={width - PAD_X}
-            y={16}
-            fill={Colors.text}
-            fontSize={12}
-            fontWeight="bold"
-            textAnchor="end">
-            {formatEur(last.value)}
-          </SvgText>
-          <SvgText x={PAD_X} y={HEIGHT - 6} fill={Colors.textSecondary} fontSize={11}>
-            {formatDate(points[0].date)}
-          </SvgText>
-          <SvgText x={width - PAD_X} y={HEIGHT - 6} fill={Colors.textSecondary} fontSize={11} textAnchor="end">
-            {formatDate(last.date)}
-          </SvgText>
-        </Svg>
-      )}
+            {/* Curseur tactile. */}
+            {active && (
+              <G>
+                <Line
+                  x1={activeX}
+                  y1={PAD_TOP - 6}
+                  x2={activeX}
+                  y2={HEIGHT - PAD_BOTTOM}
+                  stroke={Colors.borderStrong}
+                  strokeWidth={1}
+                />
+                <Circle
+                  cx={activeX}
+                  cy={y(active.value)}
+                  r={4.5}
+                  fill={Colors.text}
+                  stroke={Colors.surface}
+                  strokeWidth={2}
+                />
+                <SvgText
+                  x={Math.min(Math.max(activeX, PAD_X + 34), width - PAD_X - 34)}
+                  y={14}
+                  fill={Colors.text}
+                  fontSize={12}
+                  fontWeight="600"
+                  fontFamily={Fonts?.sans}
+                  textAnchor="middle">
+                  {`${formatEur(active.value)} · ${formatDate(active.date)}`}
+                </SvgText>
+              </G>
+            )}
+
+            {/* Repères. Masqués pendant la lecture au doigt. */}
+            {!active && (
+              <G>
+                <SvgText x={PAD_X} y={14} fill={Colors.textTertiary} fontSize={11} fontFamily={Fonts?.sans}>
+                  {formatEur(Math.max(...values))}
+                </SvgText>
+                <SvgText
+                  x={width - PAD_X}
+                  y={14}
+                  fill={Colors.text}
+                  fontSize={12}
+                  fontWeight="600"
+                  fontFamily={Fonts?.sans}
+                  textAnchor="end">
+                  {formatEur(last.value)}
+                </SvgText>
+              </G>
+            )}
+
+            <SvgText
+              x={PAD_X}
+              y={HEIGHT - 8}
+              fill={Colors.textTertiary}
+              fontSize={11}
+              fontFamily={Fonts?.sans}>
+              {formatDate(points[0].date)}
+            </SvgText>
+            <SvgText
+              x={width - PAD_X}
+              y={HEIGHT - 8}
+              fill={Colors.textTertiary}
+              fontSize={11}
+              fontFamily={Fonts?.sans}
+              textAnchor="end">
+              {formatDate(last.date)}
+            </SvgText>
+          </Svg>
+        )}
+      </View>
+
+      {band && band.high > band.low ? (
+        <View style={styles.caption}>
+          <View style={styles.captionSwatch} />
+          <AppText variant="caption">
+            Couloir habituel (P10–P90 sur 30 j) : {formatEur(band.low)} – {formatEur(band.high)}
+          </AppText>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -108,19 +236,37 @@ export function PriceChart({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
     overflow: 'hidden',
   },
+  caption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingHorizontal: Space.lg,
+    paddingBottom: Space.md,
+    paddingTop: Space.xs,
+  },
+  captionSwatch: {
+    width: 14,
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: Colors.surfaceHover,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
   placeholder: {
     height: HEIGHT,
     backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.four,
+    gap: Space.sm,
+    padding: Space.xl,
   },
+  placeholderText: { textAlign: 'center', color: Colors.textSecondary, maxWidth: 280 },
 });
