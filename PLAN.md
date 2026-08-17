@@ -1,7 +1,7 @@
 # Grimoire — Plan & état d'avancement
 
 > Document vivant : mis à jour à chaque session de travail.
-> Dernière mise à jour : **2026-07-23**
+> Dernière mise à jour : **2026-08-18**
 
 ## Vision
 
@@ -41,8 +41,13 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   activation/suppression + fil d'événements + badge non-lus au dashboard +
   bouton alerte sur la fiche carte). Emails via Resend : `send-digest.mjs`
   (immédiat après ingestion, digest hebdo le dimanche).
-  **Reste manuel** : appliquer la migration `20260612150000_alerts.sql`,
-  configurer les secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM`.
+  Migration appliquée en base et code commité le 2026-08-18.
+  **Reste manuel** : secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM`.
+- [x] **Phase 2.5 — Refonte UI** *(livrée 2026-08-18)*
+  Direction sobre & premium : palette neutre + accent froid unique réservé
+  aux actions, jeu d'icônes SVG maison en remplacement des emoji, système
+  de primitives dans `ui.tsx`, barre d'onglets Collection / Alertes.
+  Actions cachées derrière un appui long rendues explicites.
 - [ ] **Phase 3 — Scanner v1**
   Photo → rectification → reconnaissance pHash côté serveur → confirmation.
 - [ ] **Phase 4 — Scanner temps réel on-device**
@@ -56,13 +61,16 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 À cocher au fur et à mesure — détails dans le README :
 
-- [ ] Projet Supabase créé (ancien projet mis en pause)
-- [ ] Migrations SQL appliquées (`supabase/migrations/`, dans l'ordre)
+- [x] Projet Supabase créé (ancien projet mis en pause)
+- [x] Migrations SQL appliquées — **les 3 sont passées**, vérifié le 2026-08-18
+      en interrogeant les tables via l'API REST
 - [ ] Secret GitHub `DATABASE_URL` configuré (string **Session pooler**)
 - [ ] Premier run du workflow *Daily price ingestion* vérifié (vert + archive committée)
-- [ ] `mobile/.env` rempli (clé anon Supabase)
-- [ ] « Confirm email » désactivé dans Supabase Auth (confort)
-- [ ] Secret GitHub `RESEND_API_KEY` (phase 2, pour le digest email)
+- [x] `mobile/.env` rempli (clé anon Supabase) — corrigé le 2026-08-18,
+      le fichier contenait encore `placeholder-…` d'où un `Invalid API key`
+- [ ] « Confirm email » désactivé dans Supabase Auth (`mailer_autoconfirm`
+      était encore à `false` le 2026-08-18)
+- [ ] Secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM` (pour le digest email)
 
 ## Notes techniques à retenir
 
@@ -79,6 +87,16 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 ## Journal
 
+- **2026-08-18** — Phase 2 commitée (elle dormait en working tree depuis
+  trois semaines) sur la branche `phase-2-alerts`, puis refonte UI complète.
+  Vérifications faites en séance : les 3 migrations SQL sont bien appliquées,
+  `mobile/.env` contenait un placeholder au lieu de la clé anon (cause du
+  `Invalid API key` à l'inscription), et les polices web tombaient en silence
+  sur le serif par défaut faute d'import de `global.css`.
+  **Non vérifié** : les écrans derrière l'authentification n'ont pas été
+  rendus (il aurait fallu saisir le mot de passe) — seul l'écran de connexion
+  a été validé visuellement. Le rendu de la barre d'onglets reste à confirmer.
+  Prochaine étape : se connecter et éprouver la refonte, puis phase 3 (scanner).
 - **2026-07-23** — Phase 2 (code) livrée. Moteur d'alertes SQL + évaluation
   nocturne, écran Alertes dans l'app (règles, fil d'événements, badge non-lus,
   alerte depuis la fiche carte), emails immédiat + digest hebdo via Resend.
