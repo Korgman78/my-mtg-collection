@@ -27,6 +27,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Grimoire utilise l'appareil photo pour reconnaître tes cartes. La photo ne quitte pas le téléphone : seule son empreinte est envoyée."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0B0E14",

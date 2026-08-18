@@ -64,12 +64,28 @@ export default function ScanScreen() {
   const targetFolder = lockedToFolder ? (folderParam ?? null) : chosenFolder;
   const targetName = folders.data?.find((f) => f.id === targetFolder)?.name ?? null;
 
+  // Un refus de permission ne doit jamais être silencieux : c'est ce qui a
+  // fait passer ce bouton pour cassé. On garde le dernier résultat et la
+  // dernière erreur pour les afficher.
+  const [permissionNote, setPermissionNote] = useState<string | null>(null);
+
   /** Demande la permission caméra, et retombe sur les réglages système si
    *  elle a déjà été refusée — dans ce cas `requestPermission` ne rouvre
-   *  aucune boîte de dialogue et ne fait donc rien de visible. */
+   *  aucune boîte de dialogue et ne ferait donc rien de visible. */
   async function askCamera() {
-    const result = await requestPermission();
-    if (!result.granted && !result.canAskAgain) await Linking.openSettings();
+    setPermissionNote('Demande en cours…');
+    try {
+      const result = await requestPermission();
+      setPermissionNote(
+        `Réponse : ${result.status}` +
+          (result.granted ? '' : ` · redemandable : ${result.canAskAgain ? 'oui' : 'non'}`)
+      );
+      if (!result.granted && !result.canAskAgain) {
+        await Linking.openSettings();
+      }
+    } catch (err) {
+      setPermissionNote(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async function capture() {
@@ -127,6 +143,23 @@ export default function ScanScreen() {
             onPress: askCamera,
           }}
         />
+
+        {/* Diagnostic. Tant que la caméra ne s'ouvre pas, ces trois lignes
+            valent mieux qu'un bouton qui semble ne rien faire. */}
+        <View style={styles.diagnostic}>
+          <AppText variant="caption">
+            état : {permission.status} · redemandable :{' '}
+            {permission.canAskAgain ? 'oui' : 'non'}
+          </AppText>
+          {permissionNote ? <AppText variant="caption">{permissionNote}</AppText> : null}
+          <Button
+            label="Ouvrir les réglages du téléphone"
+            icon="chevronRight"
+            variant="ghost"
+            size="sm"
+            onPress={() => Linking.openSettings()}
+          />
+        </View>
       </Screen>
     );
   }
@@ -420,6 +453,12 @@ const styles = StyleSheet.create({
   },
   workingCard: { marginBottom: Space.xl, paddingVertical: Space.sm, paddingHorizontal: Space.lg },
 
+  diagnostic: {
+    paddingHorizontal: Space.xl,
+    paddingBottom: Space.xxl,
+    gap: Space.xs,
+    alignItems: 'center',
+  },
   bottom: { padding: Space.lg, gap: Space.md },
   hint: { textAlign: 'center' },
   addedLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Space.sm },
