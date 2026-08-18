@@ -97,6 +97,69 @@ export function useFolder(folderId: string) {
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/* Tri d'un dossier                                                            */
+/* -------------------------------------------------------------------------- */
+
+export type SortKey = 'name' | 'value' | 'gainPct' | 'gainEur';
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  name: 'Nom (A → Z)',
+  value: 'Valeur de la ligne',
+  gainPct: 'Plus forte hausse (%)',
+  gainEur: 'Plus forte hausse (€)',
+};
+
+/** Les chiffres d'une ligne, calculés une fois pour le tri comme pour l'affichage.
+ *
+ *  `gainEur` répond à une question que le pourcentage ne pose pas : une
+ *  commune qui prend 300 % gagne trois centimes, une rare qui prend 4 % en
+ *  gagne douze. Trier par pourcentage remonte la première, trier par euros
+ *  remonte la seconde — et ce sont deux questions légitimes, d'où les deux
+ *  critères plutôt qu'un seul. */
+export function itemMetrics(item: FolderItem) {
+  const unit = item.stats ? priceForFinish(item.stats, item.finish) : null;
+  const pct =
+    (item.finish === 'foil' ? item.stats?.change_7d_pct_foil : item.stats?.change_7d_pct) ?? null;
+
+  const value = unit === null ? null : unit * item.quantity;
+
+  // Le prix d'il y a sept jours se déduit du prix courant et de la variation.
+  // À −100 % la carte ne valait rien : on refuse la division.
+  const gainEur =
+    unit === null || pct === null || pct <= -100
+      ? null
+      : (unit - unit / (1 + pct / 100)) * item.quantity;
+
+  return { unit, value, pct, gainEur };
+}
+
+/** Trie une liste d'items. Les lignes sans prix connu finissent en bas :
+ *  elles ne sont pas « à zéro », elles sont inconnues. */
+export function sortItems(items: FolderItem[], key: SortKey): FolderItem[] {
+  const sorted = [...items];
+
+  if (key === 'name') {
+    return sorted.sort((a, b) => a.card.name.localeCompare(b.card.name, 'fr'));
+  }
+
+  const pick = (item: FolderItem) => {
+    const m = itemMetrics(item);
+    if (key === 'value') return m.value;
+    if (key === 'gainPct') return m.pct;
+    return m.gainEur;
+  };
+
+  return sorted.sort((a, b) => {
+    const va = pick(a);
+    const vb = pick(b);
+    if (va === null && vb === null) return a.card.name.localeCompare(b.card.name, 'fr');
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    return vb - va;
+  });
+}
+
 export function useCardDetail(cardId: string, itemId?: string) {
   return useQuery({
     queryKey: ['collection', 'card', cardId, itemId ?? null],

@@ -24,11 +24,15 @@ import {
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
 import {
+  itemMetrics,
+  sortItems,
+  SORT_LABELS,
   useAddSetBulk,
   useFolder,
   useSetItemQuantity,
   type FolderItem,
   type SetBulkPhase,
+  type SortKey,
 } from '@/lib/collection';
 import { formatEur } from '@/lib/format';
 import { goBack } from '@/lib/nav';
@@ -48,10 +52,13 @@ export default function FolderScreen() {
   const { data, isLoading, refetch, isRefetching } = useFolder(id);
   const [bulking, setBulking] = useState(false);
   const [mode, setMode] = useState<ViewMode>('grid');
+  const [sort, setSort] = useState<SortKey>('name');
+  const [sorting, setSorting] = useState(false);
   const setQuantity = useSetItemQuantity();
 
   if (isLoading || !data) return <Loading />;
-  const { folder, items } = data;
+  const { folder, items: unsorted } = data;
+  const items = sortItems(unsorted, sort);
 
   const totalValue = items.reduce((sum, item) => {
     const price = item.stats ? priceForFinish(item.stats, item.finish) : null;
@@ -98,13 +105,24 @@ export default function FolderScreen() {
 
       {items.length > 0 ? (
         <View style={styles.modeRow}>
-          <Segmented
-            options={[
-              { value: 'grid', label: 'Grille' },
-              { value: 'list', label: 'Liste' },
-            ]}
-            value={mode}
-            onChange={setMode}
+          <View style={{ flex: 1 }}>
+            <Segmented
+              options={[
+                { value: 'grid', label: 'Grille' },
+                { value: 'list', label: 'Liste' },
+              ]}
+              value={mode}
+              onChange={setMode}
+            />
+          </View>
+          {/* Le critère est écrit sur le bouton : un tri qu'on ne peut pas
+              lire est un tri dont on doute. */}
+          <Button
+            label={SORT_LABELS[sort]}
+            icon="filter"
+            size="sm"
+            variant="secondary"
+            onPress={() => setSorting(true)}
           />
         </View>
       ) : null}
@@ -142,6 +160,26 @@ export default function FolderScreen() {
       />
 
       <SetBulkSheet folderId={folder.id} visible={bulking} onClose={() => setBulking(false)} />
+
+      <Sheet visible={sorting} onClose={() => setSorting(false)} title="Trier les cartes">
+        <Segmented
+          columns
+          options={(Object.keys(SORT_LABELS) as SortKey[]).map((k) => ({
+            value: k,
+            label: SORT_LABELS[k],
+          }))}
+          value={sort}
+          onChange={(v) => {
+            setSort(v);
+            setSorting(false);
+          }}
+        />
+        <AppText variant="caption">
+          Les deux critères de hausse portent sur sept jours et ne disent pas la même chose : une
+          commune qui prend 300 % gagne trois centimes, une rare qui prend 4 % en gagne douze. Le
+          tri en euros tient compte du nombre d&apos;exemplaires.
+        </AppText>
+      </Sheet>
     </Screen>
   );
 }
@@ -302,9 +340,7 @@ function CardRow({
   onPress: () => void;
   onQuantity: (quantity: number) => void;
 }) {
-  const unitPrice = item.stats ? priceForFinish(item.stats, item.finish) : null;
-  const lineTotal = unitPrice === null ? null : unitPrice * item.quantity;
-  const change = item.finish === 'foil' ? item.stats?.change_7d_pct_foil : item.stats?.change_7d_pct;
+  const { unit: unitPrice, value: lineTotal, pct: change, gainEur } = itemMetrics(item);
 
   return (
     <View style={styles.row}>
@@ -329,7 +365,17 @@ function CardRow({
           </AppText>
           <View style={styles.rowBadges}>
             <FinishBadge finish={item.finish} />
-            <ChangeBadge pct={change ?? null} size="sm" />
+            <ChangeBadge pct={change} size="sm" />
+            {/* Le gain en euros à côté du pourcentage : c'est le chiffre qui
+                dit si la hausse pèse quelque chose. */}
+            {gainEur !== null && Math.abs(gainEur) >= 0.01 ? (
+              <AppText
+                variant="caption"
+                style={{ color: gainEur > 0 ? Colors.up : Colors.down, fontVariant: ['tabular-nums'] }}>
+                {gainEur > 0 ? '+' : '−'}
+                {formatEur(Math.abs(gainEur))}
+              </AppText>
+            ) : null}
           </View>
         </View>
         <AppText variant="price">{formatEur(lineTotal)}</AppText>
@@ -407,7 +453,13 @@ const styles = StyleSheet.create({
     paddingBottom: Space.md,
   },
   setCard: { gap: Space.xs, alignItems: 'flex-start', paddingVertical: Space.lg },
-  modeRow: { paddingHorizontal: Space.lg, paddingBottom: Space.md },
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingHorizontal: Space.lg,
+    paddingBottom: Space.md,
+  },
 
   list: { paddingHorizontal: Space.lg, paddingBottom: Space.xxl, gap: Space.sm, flexGrow: 1 },
   row: {

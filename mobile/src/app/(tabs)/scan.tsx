@@ -11,6 +11,7 @@
 //     et silencieux dans une collection coûte bien plus cher qu'un choix.
 
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -109,10 +110,20 @@ export default function ScanScreen() {
     setStage({ step: 'working', label: 'Lecture de la carte…' });
 
     try {
+      // Une secousse brève remplace le déclencheur sonore : on scanne des
+      // dizaines de cartes d'affilée, un « clac » à chaque fois est pénible.
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
       // `skipProcessing` est volontairement absent : sur Android il renvoie
       // l'image brute du capteur SANS appliquer l'orientation. La photo
       // arrivait couchée à 90°, et on hachait une carte à l'horizontale.
-      const photo = await camera.current.takePictureAsync({ quality: 0.9 });
+      //
+      // `shutterSound: false` coupe le déclencheur. Réserve honnête : dans
+      // certains pays (Japon, Corée) le système impose ce son et l'ignore.
+      const photo = await camera.current.takePictureAsync({
+        quality: 0.9,
+        shutterSound: false,
+      });
       if (!photo) throw new Error("La photo n'a pas pu être prise.");
 
       const { hashes, previewUri } = await hashPhoto(
@@ -161,6 +172,7 @@ export default function ScanScreen() {
       { folderId: folder, cardId: match.card_id, finish: 'nonfoil' },
       {
         onSuccess: (result) => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           // On dit le total atteint, pas « ajoutée » : sur un playset, savoir
           // qu'on en est au troisième exemplaire est toute l'information.
           setAdded(result.merged ? `${match.name} ×${result.quantity}` : match.name);
