@@ -13,7 +13,8 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrpyrbhemwutvfkwpgah.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxycHlyYmhlbXd1dHZma3dwZ2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNzEzNTUsImV4cCI6MjA5Njg0NzM1NX0.GOvFqPGNwu92GFxjnD3XW7QYleJ9dDF1Mg_urztnBOw"
-      }
+      },
+      "node": "22.11.0"
     },
     "preview": {
       "distribution": "internal",
@@ -23,7 +24,8 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrpyrbhemwutvfkwpgah.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxycHlyYmhlbXd1dHZma3dwZ2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNzEzNTUsImV4cCI6MjA5Njg0NzM1NX0.GOvFqPGNwu92GFxjnD3XW7QYleJ9dDF1Mg_urztnBOw"
-      }
+      },
+      "node": "22.11.0"
     },
     "production": {
       "autoIncrement": true,
@@ -33,7 +35,8 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrpyrbhemwutvfkwpgah.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxycHlyYmhlbXd1dHZma3dwZ2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNzEzNTUsImV4cCI6MjA5Njg0NzM1NX0.GOvFqPGNwu92GFxjnD3XW7QYleJ9dDF1Mg_urztnBOw"
-      }
+      },
+      "node": "22.11.0"
     }
   },
   "submit": {
