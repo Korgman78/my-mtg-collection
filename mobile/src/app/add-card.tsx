@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icons';
@@ -26,15 +26,7 @@ import { useAddCard } from '@/lib/collection';
 import { formatEur } from '@/lib/format';
 import { autocompleteNames, cardImages, searchPrintings, type ScryfallCard } from '@/lib/scryfall';
 import type { Finish } from '@/lib/types';
-
-function useDebounced(value: string, delay = 200) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
+import { useDebounced } from '@/lib/use-debounced';
 
 const FINISH_LABEL: Record<Finish, string> = {
   nonfoil: 'Normale',

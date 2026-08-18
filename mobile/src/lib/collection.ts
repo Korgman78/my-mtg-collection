@@ -3,7 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { cardImages, type ScryfallCard } from '@/lib/scryfall';
+import { cardImages, fetchCardById, fetchSetBulk, type ScryfallCard } from '@/lib/scryfall';
 import { supabase } from '@/lib/supabase';
 import {
   priceForFinish,
@@ -124,6 +124,49 @@ export function useCardDetail(cardId: string, itemId?: string) {
   });
 }
 
+/** Liste courte des dossiers, pour les sélecteurs (scanner, alertes). */
+export function useFoldersLite() {
+  return useQuery({
+    queryKey: ['collection', 'folders-lite'],
+    queryFn: async () =>
+      throwIfError(
+        await supabase.from('folders').select('id, name, color, kind').order('position')
+      ) as Pick<Folder, 'id' | 'name' | 'color' | 'kind'>[],
+  });
+}
+
+/** Sets dont la référence perceptuelle est construite — c'est-à-dire ce que
+ *  le scanner sait reconnaître. Affiché à l'écran pour qu'un échec de scan
+ *  sur un set jamais indexé ne passe pas pour une panne. */
+export function useHashedSets() {
+  return useQuery({
+    queryKey: ['scanner', 'hashed-sets'],
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      throwIfError(
+        await supabase.from('hashed_sets').select('*').order('hashed_at', { ascending: false })
+      ) as { set_code: string; set_name: string; card_count: number; hashed_at: string }[],
+  });
+}
+
+/** Ajoute une carte reconnue par le scanner : la référence ne connaît que
+ *  son identité, on repasse par Scryfall pour les prix du jour. */
+export function useAddScannedCard() {
+  const addCard = useAddCard();
+  return useMutation({
+    mutationFn: async (input: { folderId: string; cardId: string; finish: Finish }) => {
+      const card = await fetchCardById(input.cardId);
+      await addCard.mutateAsync({
+        folderId: input.folderId,
+        card,
+        finish: input.finish,
+        quantity: 1,
+      });
+      return card;
+    },
+  });
+}
+
 export function useCreateFolder() {
   const qc = useQueryClient();
   return useMutation({
@@ -156,44 +199,19 @@ export function useAddCard() {
       quantity: number;
     }) => {
       const { card } = input;
-      const images = cardImages(card);
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = cardRows(card, today);
 
       // 1. Cache de la carte (ignoré si déjà présente).
       throwIfError(
-        await supabase.from('cards').upsert(
-          {
-            id: card.id,
-            oracle_id: card.oracle_id,
-            name: card.name,
-            set_code: card.set,
-            collector_number: card.collector_number,
-            rarity: card.rarity,
-            image_normal: images.normal ?? null,
-            image_small: images.small ?? null,
-            finishes: card.finishes,
-            released_at: card.released_at,
-          },
-          { onConflict: 'id', ignoreDuplicates: true }
-        )
+        await supabase.from('cards').upsert(rows.card, { onConflict: 'id', ignoreDuplicates: true })
       );
 
       // 2. Prix du jour, pour ne pas attendre l'ingestion nocturne.
-      const today = new Date().toISOString().slice(0, 10);
-      const p = card.prices;
       throwIfError(
-        await supabase.from('price_snapshots').upsert(
-          {
-            card_id: card.id,
-            snapped_on: today,
-            eur: p.eur,
-            eur_foil: p.eur_foil,
-            eur_etched: p.eur_etched ?? null,
-            usd: p.usd,
-            usd_foil: p.usd_foil,
-            usd_etched: p.usd_etched,
-          },
-          { onConflict: 'card_id,snapped_on', ignoreDuplicates: true }
-        )
+        await supabase
+          .from('price_snapshots')
+          .upsert(rows.price, { onConflict: 'card_id,snapped_on', ignoreDuplicates: true })
       );
 
       // 3. L'item de collection lui-même.
@@ -205,6 +223,151 @@ export function useAddCard() {
           quantity: input.quantity,
         })
       );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bloc de set                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** Lignes d'une carte Scryfall vers nos trois tables. Partagé par l'ajout à
+ *  l'unité et par le bloc de set, pour qu'ils écrivent exactement la même chose. */
+function cardRows(card: ScryfallCard, today: string) {
+  const images = cardImages(card);
+  return {
+    card: {
+      id: card.id,
+      oracle_id: card.oracle_id,
+      name: card.name,
+      set_code: card.set,
+      collector_number: card.collector_number,
+      rarity: card.rarity,
+      image_normal: images.normal ?? null,
+      image_small: images.small ?? null,
+      finishes: card.finishes,
+      released_at: card.released_at,
+    },
+    price: {
+      card_id: card.id,
+      snapped_on: today,
+      eur: card.prices.eur,
+      eur_foil: card.prices.eur_foil,
+      eur_etched: card.prices.eur_etched ?? null,
+      usd: card.prices.usd,
+      usd_foil: card.prices.usd_foil,
+      usd_etched: card.prices.usd_etched,
+    },
+  };
+}
+
+/** PostgREST encaisse quelques centaines de lignes d'un coup, mais un lot
+ *  plus petit donne une progression lisible et un échec moins coûteux. */
+const CHUNK = 100;
+
+function chunked<T>(rows: T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += CHUNK) out.push(rows.slice(i, i + CHUNK));
+  return out;
+}
+
+/** Les card_id déjà dans le dossier, en pages de 1000.
+ *
+ *  Pourquoi paginer : PostgREST plafonne une réponse et le fait en silence.
+ *  Un dossier qui a reçu deux blocs dépasse le millier de lignes ; une liste
+ *  tronquée nous ferait ré-ajouter des cartes déjà présentes, c'est-à-dire
+ *  exactement le doublon que cette fonction existe pour éviter. */
+async function existingCardIds(folderId: string): Promise<Set<string>> {
+  const PAGE = 1000;
+  const ids = new Set<string>();
+  for (let from = 0; ; from += PAGE) {
+    const rows = throwIfError(
+      await supabase
+        .from('collection_items')
+        .select('card_id')
+        .eq('folder_id', folderId)
+        .range(from, from + PAGE - 1)
+    ) as { card_id: string }[];
+    for (const r of rows) ids.add(r.card_id);
+    if (rows.length < PAGE) return ids;
+  }
+}
+
+export type SetBulkResult = { added: number; skipped: number };
+
+export type SetBulkPhase =
+  | { step: 'fetching'; loaded: number; total: number }
+  | { step: 'writing'; loaded: number; total: number };
+
+/** Ajoute une copie de chaque commune et peu commune d'un set.
+ *
+ *  Le but n'est pas de saisir une collection mais de la *suivre* : une fois
+ *  ces cartes en base, l'ingestion nocturne leur construit un historique de
+ *  prix, et les alertes peuvent porter sur le bulk d'un set entier.
+ *
+ *  Les cartes déjà présentes dans le dossier sont ignorées, pas dupliquées :
+ *  relancer le bloc sur un set complété est sans effet. */
+export function useAddSetBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      folderId: string;
+      setCode: string;
+      onProgress?: (phase: SetBulkPhase) => void;
+    }): Promise<SetBulkResult> => {
+      const { folderId, setCode, onProgress } = input;
+
+      const cards = await fetchSetBulk(setCode, (loaded, total) =>
+        onProgress?.({ step: 'fetching', loaded, total })
+      );
+      if (cards.length === 0) {
+        throw new Error(`Aucune commune ni peu commune trouvée pour « ${setCode.toUpperCase()} ».`);
+      }
+
+      const already = await existingCardIds(folderId);
+      const toAdd = cards.filter((c) => !already.has(c.id));
+      if (toAdd.length === 0) return { added: 0, skipped: cards.length };
+
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = toAdd.map((c) => cardRows(c, today));
+      let written = 0;
+      const progress = () => onProgress?.({ step: 'writing', loaded: written, total: toAdd.length });
+
+      // Trois passes, dans cet ordre : les items référencent les cartes.
+      for (const batch of chunked(rows)) {
+        throwIfError(
+          await supabase
+            .from('cards')
+            .upsert(batch.map((r) => r.card), { onConflict: 'id', ignoreDuplicates: true })
+        );
+      }
+      for (const batch of chunked(rows)) {
+        throwIfError(
+          await supabase
+            .from('price_snapshots')
+            .upsert(batch.map((r) => r.price), {
+              onConflict: 'card_id,snapped_on',
+              ignoreDuplicates: true,
+            })
+        );
+      }
+      for (const batch of chunked(toAdd)) {
+        throwIfError(
+          await supabase.from('collection_items').insert(
+            batch.map((c) => ({
+              folder_id: folderId,
+              card_id: c.id,
+              finish: 'nonfoil' as const,
+              quantity: 1,
+            }))
+          )
+        );
+        written += batch.length;
+        progress();
+      }
+
+      return { added: toAdd.length, skipped: cards.length - toAdd.length };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
   });
