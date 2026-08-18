@@ -12,8 +12,9 @@
 
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
+import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icons';
 import {
@@ -48,10 +49,28 @@ export default function ScanScreen() {
   const hashedSets = useHashedSets();
   const addScanned = useAddScannedCard();
 
-  // Le dossier de destination reste choisi d'un scan à l'autre : scanner
-  // un lot de cartes ne doit pas demander de le redésigner à chaque fois.
-  const [folderId, setFolderId] = useState<string | null>(null);
-  const targetFolder = folderId ?? folders.data?.[0]?.id ?? null;
+  // Deux chemins d'arrivée. Depuis un dossier, la destination est connue et
+  // on n'a rien à demander. Depuis l'onglet, on ne devine PAS : ranger des
+  // cartes dans un dossier au hasard parce qu'il était premier dans la liste
+  // est le genre d'erreur qu'on ne remarque qu'une fois le mal fait.
+  const { folderId: folderParam } = useLocalSearchParams<{ folderId?: string }>();
+  const [chosenFolder, setChosenFolder] = useState<string | null>(null);
+
+  // Le paramètre survit à la navigation par onglets : revenir sur l'onglet
+  // Scanner après être passé par un dossier resterait verrouillé dessus.
+  // D'où cette porte de sortie explicite.
+  const [unlocked, setUnlocked] = useState(false);
+  const lockedToFolder = !!folderParam && !unlocked;
+  const targetFolder = lockedToFolder ? (folderParam ?? null) : chosenFolder;
+  const targetName = folders.data?.find((f) => f.id === targetFolder)?.name ?? null;
+
+  /** Demande la permission caméra, et retombe sur les réglages système si
+   *  elle a déjà été refusée — dans ce cas `requestPermission` ne rouvre
+   *  aucune boîte de dialogue et ne fait donc rien de visible. */
+  async function askCamera() {
+    const result = await requestPermission();
+    if (!result.granted && !result.canAskAgain) await Linking.openSettings();
+  }
 
   async function capture() {
     if (!camera.current) return;
@@ -73,12 +92,15 @@ export default function ScanScreen() {
   }
 
   function addMatch(match: ScanMatch) {
-    if (!targetFolder) return;
+    const folder = targetFolder;
+    if (!folder) return;
     addScanned.mutate(
-      { folderId: targetFolder, cardId: match.card_id, finish: 'nonfoil' },
+      { folderId: folder, cardId: match.card_id, finish: 'nonfoil' },
       {
-        onSuccess: () => {
-          setAdded(match.name);
+        onSuccess: (result) => {
+          // On dit le total atteint, pas « ajoutée » : sur un playset, savoir
+          // qu'on en est au troisième exemplaire est toute l'information.
+          setAdded(result.merged ? `${match.name} ×${result.quantity}` : match.name);
           setStage({ step: 'idle' });
         },
       }
@@ -88,14 +110,22 @@ export default function ScanScreen() {
   if (!permission) return <Loading />;
 
   if (!permission.granted) {
+    const refused = !permission.canAskAgain;
     return (
       <Screen>
         <AppBar title="Scanner" />
         <EmptyState
           icon="card"
           title="La caméra est nécessaire"
-          hint="Le scanner reconnaît une carte à partir de sa photo. L'image ne quitte jamais le téléphone : seule son empreinte, 25 fois 64 bits, est envoyée."
-          action={{ label: 'Autoriser la caméra', onPress: requestPermission }}
+          hint={
+            refused
+              ? "La caméra a été refusée. Le bouton ouvre les réglages du téléphone : autorise l'appareil photo pour Expo Go, puis reviens ici."
+              : "Le scanner reconnaît une carte à partir de sa photo. L'image ne quitte jamais le téléphone : seule son empreinte, 25 fois 64 bits, est envoyée."
+          }
+          action={{
+            label: refused ? 'Ouvrir les réglages' : 'Autoriser la caméra',
+            onPress: askCamera,
+          }}
         />
       </Screen>
     );
@@ -108,9 +138,11 @@ export default function ScanScreen() {
       <AppBar
         title="Scanner"
         subtitle={
-          scannable.length === 0
-            ? 'Aucun set indexé pour l’instant'
-            : `${scannable.length} set${scannable.length > 1 ? 's' : ''} reconnaissable${scannable.length > 1 ? 's' : ''}`
+          targetName
+            ? `Vers « ${targetName} »`
+            : scannable.length === 0
+              ? 'Aucun set indexé pour l’instant'
+              : `${scannable.length} set${scannable.length > 1 ? 's' : ''} reconnaissable${scannable.length > 1 ? 's' : ''}`
         }
       />
 
@@ -152,14 +184,28 @@ export default function ScanScreen() {
           </AppText>
         )}
 
-        <FolderPicker
-          folders={folders.data ?? []}
-          value={targetFolder}
-          onChange={setFolderId}
-        />
+        {/* Depuis un dossier, la destination est fixée : pas de sélecteur. */}
+        {lockedToFolder ? (
+          <Button
+            label="Changer de dossier"
+            icon="folder"
+            size="sm"
+            variant="ghost"
+            onPress={() => setUnlocked(true)}
+          />
+        ) : (
+          <>
+            <AppText variant="overline">Ranger dans</AppText>
+            <FolderPicker
+              folders={folders.data ?? []}
+              value={targetFolder}
+              onChange={setChosenFolder}
+            />
+          </>
+        )}
 
         <Button
-          label="Scanner la carte"
+          label={targetName ? `Scanner vers « ${targetName} »` : 'Scanner la carte'}
           icon="card"
           size="lg"
           onPress={capture}
@@ -167,9 +213,11 @@ export default function ScanScreen() {
           disabled={!targetFolder}
         />
 
-        {!targetFolder && !folders.isLoading ? (
-          <AppText variant="caption" style={{ color: Colors.danger }}>
-            Crée d&apos;abord un dossier depuis l&apos;onglet Collection.
+        {!targetFolder ? (
+          <AppText variant="caption" style={{ color: Colors.accent }}>
+            {folders.data?.length === 0
+              ? 'Crée d’abord un dossier depuis l’onglet Collection.'
+              : 'Choisis le dossier de destination ci-dessus.'}
           </AppText>
         ) : null}
 

@@ -156,13 +156,13 @@ export function useAddScannedCard() {
   return useMutation({
     mutationFn: async (input: { folderId: string; cardId: string; finish: Finish }) => {
       const card = await fetchCardById(input.cardId);
-      await addCard.mutateAsync({
+      const result = await addCard.mutateAsync({
         folderId: input.folderId,
         card,
         finish: input.finish,
         quantity: 1,
       });
-      return card;
+      return { card, ...result };
     },
   });
 }
@@ -214,15 +214,8 @@ export function useAddCard() {
           .upsert(rows.price, { onConflict: 'card_id,snapped_on', ignoreDuplicates: true })
       );
 
-      // 3. L'item de collection lui-même.
-      throwIfError(
-        await supabase.from('collection_items').insert({
-          folder_id: input.folderId,
-          card_id: card.id,
-          finish: input.finish,
-          quantity: input.quantity,
-        })
-      );
+      // 3. L'item lui-même — en cumulant si la carte est déjà là.
+      return addOrIncrement(input.folderId, card.id, input.finish, input.quantity);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
   });
@@ -368,6 +361,65 @@ export function useAddSetBulk() {
       }
 
       return { added: toAdd.length, skipped: cards.length - toAdd.length };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
+  });
+}
+
+/** Ajoute une carte, ou incrémente l'exemplaire existant.
+ *
+ *  Pourquoi cumuler plutôt qu'insérer une seconde ligne : scanner les quatre
+ *  copies d'un playset doit donner « ×4 », pas quatre lignes identiques dans
+ *  le dossier. Le cumul ne vaut qu'à finish égal — une foil n'est pas un
+ *  exemplaire de plus de la version normale, c'est une autre carte. */
+async function addOrIncrement(
+  folderId: string,
+  cardId: string,
+  finish: Finish,
+  quantity: number
+): Promise<{ merged: boolean; quantity: number }> {
+  const existing = (await supabase
+    .from('collection_items')
+    .select('id, quantity')
+    .eq('folder_id', folderId)
+    .eq('card_id', cardId)
+    .eq('finish', finish)
+    .maybeSingle()
+    .then(throwIfError)) as { id: string; quantity: number } | null;
+
+  if (existing) {
+    const next = existing.quantity + quantity;
+    throwIfError(
+      await supabase.from('collection_items').update({ quantity: next }).eq('id', existing.id)
+    );
+    return { merged: true, quantity: next };
+  }
+
+  throwIfError(
+    await supabase
+      .from('collection_items')
+      .insert({ folder_id: folderId, card_id: cardId, finish, quantity })
+  );
+  return { merged: false, quantity };
+}
+
+/** Change le nombre d'exemplaires. À zéro, la ligne disparaît : la contrainte
+ *  SQL interdit `quantity <= 0`, et un exemplaire à zéro n'a aucun sens. */
+export function useSetItemQuantity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { itemId: string; quantity: number }) => {
+      if (input.quantity <= 0) {
+        throwIfError(await supabase.from('collection_items').delete().eq('id', input.itemId));
+        return { removed: true };
+      }
+      throwIfError(
+        await supabase
+          .from('collection_items')
+          .update({ quantity: input.quantity })
+          .eq('id', input.itemId)
+      );
+      return { removed: false };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
   });

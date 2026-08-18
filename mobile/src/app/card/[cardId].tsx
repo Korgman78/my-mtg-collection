@@ -20,10 +20,11 @@ import {
   Pill,
   Screen,
   SectionHeader,
+  Stepper,
   Surface,
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
-import { useCardDetail, useDeleteItem } from '@/lib/collection';
+import { useCardDetail, useDeleteItem, useSetItemQuantity } from '@/lib/collection';
 import { formatDate, formatEur } from '@/lib/format';
 import { priceForFinish, type Finish } from '@/lib/types';
 
@@ -32,6 +33,7 @@ export default function CardScreen() {
   const router = useRouter();
   const { data, isLoading } = useCardDetail(cardId, itemId);
   const deleteItem = useDeleteItem();
+  const setQuantity = useSetItemQuantity();
   const [alerting, setAlerting] = useState(false);
   const [removing, setRemoving] = useState(false);
 
@@ -81,8 +83,25 @@ export default function CardScreen() {
         {item ? (
           <View style={styles.badges}>
             <FinishBadge finish={item.finish} />
-            {item.quantity > 1 ? <Pill label={`×${item.quantity}`} /> : null}
+            <Pill label={`×${item.quantity}`} />
           </View>
+        ) : null}
+
+        {item ? (
+          <Surface style={styles.copies}>
+            <View style={{ gap: 2, flex: 1 }}>
+              <AppText variant="overline">Exemplaires</AppText>
+              <AppText variant="caption">
+                {currentPrice !== null
+                  ? `${formatEur(currentPrice * item.quantity)} au total`
+                  : 'Prix inconnu pour l’instant'}
+              </AppText>
+            </View>
+            <Stepper
+              value={item.quantity}
+              onChange={(quantity) => setQuantity.mutate({ itemId: item.id, quantity })}
+            />
+          </Surface>
         ) : null}
 
         <Surface style={styles.priceCard}>
@@ -205,6 +224,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
   },
   badges: { flexDirection: 'row', justifyContent: 'center', gap: Space.sm },
+  copies: { flexDirection: 'row', alignItems: 'center', gap: Space.md },
 
   priceCard: { gap: Space.lg },
   priceMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
