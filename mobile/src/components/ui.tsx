@@ -7,6 +7,12 @@
 // Deux règles d'accessibilité tenues par ces composants :
 //   - un contrôle tactile fait au moins 40 px de haut ;
 //   - une icône seule porte toujours un libellé (`label`), jamais rien de muet.
+//
+// Une règle de structure, apprise à la dure : un contrôle ne s'imbrique jamais
+// dans un autre contrôle. Sur le web, `accessibilityRole="button"` produit un
+// vrai `<button>`, et un `<button>` dans un `<button>` est du HTML invalide.
+// Une ligne cliquable qui porte une action secondaire se compose donc en deux
+// zones sœurs (voir `FolderRow` dans le tableau de bord), pas en poupées russes.
 
 import { type ReactNode } from 'react';
 import {
@@ -72,7 +78,13 @@ export function AppBar({
   );
 }
 
-/** Titre de section, avec une action facultative alignée à droite. */
+/** Losange doré. Marque d'enluminure, jamais porteuse de sens seule. */
+export function Diamond({ size = 5, color = Colors.accent }: { size?: number; color?: string }) {
+  return <View style={[styles.diamond, { width: size, height: size, backgroundColor: color }]} />;
+}
+
+/** Titre de section : losange, titre gravé, filet doré qui court jusqu'à
+ *  l'action. C'est la rubrique d'un chapitre, pas une étiquette de formulaire. */
 export function SectionHeader({
   title,
   action,
@@ -82,7 +94,9 @@ export function SectionHeader({
 }) {
   return (
     <View style={styles.sectionHeader}>
+      <Diamond />
       <AppText variant="overline">{title}</AppText>
+      <View style={styles.sectionRule} />
       {action ? (
         <Button
           label={action.label}
@@ -96,20 +110,59 @@ export function SectionHeader({
   );
 }
 
-export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.divider, style]} />;
+/** Filet de séparation. `ornament` place un losange en son milieu, pour les
+ *  respirations franches (fin de bloc), pas pour séparer deux lignes de liste. */
+export function Divider({
+  ornament = false,
+  style,
+}: {
+  ornament?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  if (!ornament) return <View style={[styles.divider, style]} />;
+  return (
+    <View style={[styles.dividerOrnate, style]}>
+      <View style={styles.dividerLine} />
+      <Diamond size={4} color={Colors.borderStrong} />
+      <View style={styles.dividerLine} />
+    </View>
+  );
 }
 
+/** Panneau. `tone="plate"` ajoute la bordure dorée et les équerres d'angle :
+ *  c'est l'enluminure de l'app, réservée à UN bloc par écran (celui qu'on
+ *  regarde en premier). Deux plaques sur un même écran et plus rien ne prime. */
 export function Surface({
   children,
   style,
   padded = true,
+  tone = 'default',
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
+  tone?: 'default' | 'plate';
 }) {
-  return <View style={[styles.surface, padded && styles.surfacePadded, style]}>{children}</View>;
+  return (
+    <View
+      style={[styles.surface, tone === 'plate' && styles.plate, padded && styles.surfacePadded, style]}>
+      {tone === 'plate' ? <GiltCorners /> : null}
+      {children}
+    </View>
+  );
+}
+
+/** Équerres d'angle dorées, dessinées en bordures plutôt qu'en SVG : quatre
+ *  vues suffisent, et un trait de 1 px reste net à toutes les densités. */
+function GiltCorners() {
+  return (
+    <>
+      <View style={[styles.corner, styles.cornerTL]} />
+      <View style={[styles.corner, styles.cornerTR]} />
+      <View style={[styles.corner, styles.cornerBL]} />
+      <View style={[styles.corner, styles.cornerBR]} />
+    </>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -498,6 +551,83 @@ export function Sheet({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Confirmation                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Confirmation d'une action irréversible.
+ *
+ *  Pourquoi pas `Alert.alert` : sur react-native-web c'est une méthode vide
+ *  (`static alert() {}`). Le bouton se cliquait, aucune boîte ne s'ouvrait,
+ *  et donc rien n'était jamais supprimé — silencieusement. Cette boîte-ci
+ *  rend le même service sur les trois plateformes.
+ *
+ *  L'action destructrice n'est jamais présélectionnée et son libellé nomme
+ *  l'acte (« Supprimer le dossier »), jamais « OK ». */
+export function ConfirmDialog({
+  visible,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel = 'Annuler',
+  destructive = true,
+  loading = false,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  title: string;
+  message?: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  loading?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={styles.dialogBackdrop} onPress={onCancel}>
+        <Pressable style={styles.dialog} onPress={() => {}}>
+          <View style={styles.dialogHead}>
+            <View
+              style={[styles.dialogGlyph, destructive && { backgroundColor: Colors.dangerSoft }]}>
+              <Icon
+                name={destructive ? 'trash' : 'check'}
+                size={18}
+                color={destructive ? Colors.danger : Colors.accent}
+              />
+            </View>
+            <AppText variant="heading">{title}</AppText>
+          </View>
+
+          {message ? (
+            <AppText variant="body" style={styles.dialogMessage}>
+              {message}
+            </AppText>
+          ) : null}
+
+          <View style={styles.dialogActions}>
+            <Button
+              label={cancelLabel}
+              variant="secondary"
+              onPress={onCancel}
+              style={styles.dialogAction}
+            />
+            <Button
+              label={confirmLabel}
+              variant={destructive ? 'danger' : 'primary'}
+              onPress={onConfirm}
+              loading={loading}
+              style={styles.dialogAction}
+            />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 
 const variantStyles = StyleSheet.create({
   primary: { backgroundColor: Colors.accent },
@@ -533,10 +663,15 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Space.sm,
     minHeight: Control.sm,
   },
+  sectionRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.rule },
+  diamond: { transform: [{ rotate: '45deg' }] },
+
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
+  dividerOrnate: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
 
   surface: {
     backgroundColor: Colors.surface,
@@ -545,6 +680,36 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   surfacePadded: { padding: Space.lg },
+  plate: {
+    borderColor: Colors.rule,
+    backgroundColor: Colors.surfaceAlt,
+    overflow: 'hidden',
+  },
+  corner: {
+    position: 'absolute',
+    width: 13,
+    height: 13,
+    borderColor: Colors.accentBorder,
+    // Décor pur : ne doit jamais intercepter un geste. En style et non en
+    // prop — `props.pointerEvents` est déprécié depuis RN 0.79.
+    pointerEvents: 'none',
+  },
+  cornerTL: { top: 6, left: 6, borderTopWidth: 1, borderLeftWidth: 1, borderTopLeftRadius: Radius.sm },
+  cornerTR: { top: 6, right: 6, borderTopWidth: 1, borderRightWidth: 1, borderTopRightRadius: Radius.sm },
+  cornerBL: {
+    bottom: 6,
+    left: 6,
+    borderBottomWidth: 1,
+    borderLeftWidth: 1,
+    borderBottomLeftRadius: Radius.sm,
+  },
+  cornerBR: {
+    bottom: 6,
+    right: 6,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderBottomRightRadius: Radius.sm,
+  },
 
   button: {
     flexDirection: 'row',
@@ -736,6 +901,36 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border,
   },
+
+  dialogBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Space.xl,
+  },
+  dialog: {
+    width: '100%',
+    maxWidth: 380,
+    gap: Space.md,
+    padding: Space.xl,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.rule,
+  },
+  dialogHead: { flexDirection: 'row', alignItems: 'center', gap: Space.md },
+  dialogGlyph: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogMessage: { color: Colors.textSecondary },
+  dialogActions: { flexDirection: 'row', gap: Space.sm, marginTop: Space.xs },
+  dialogAction: { flex: 1 },
 });
 
 const textStyles = StyleSheet.create({
@@ -764,12 +959,14 @@ const textStyles = StyleSheet.create({
   body: { fontSize: 15, color: Colors.text, fontFamily: Fonts?.sans, lineHeight: 21 },
   label: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Fonts?.sans },
   caption: { fontSize: 12.5, color: Colors.textSecondary, fontFamily: Fonts?.sans },
+  // Rubrique gravée : petite, dorée, très espacée. C'est le seul endroit où
+  // l'or porte du texte — ailleurs il ne sert qu'aux actions.
   overline: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textTertiary,
+    color: Colors.accent,
     fontFamily: Fonts?.sans,
-    letterSpacing: 0.7,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
   price: {

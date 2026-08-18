@@ -4,7 +4,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { CreateRuleModal } from '@/components/create-rule-modal';
 import {
@@ -12,6 +12,7 @@ import {
   AppText,
   Button,
   ChangeBadge,
+  ConfirmDialog,
   EmptyState,
   IconButton,
   Loading,
@@ -40,6 +41,7 @@ export default function AlertsScreen() {
   const deleteRule = useDeleteRule();
   const markSeen = useMarkAlertsSeen();
   const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<AlertRule | null>(null);
   const folderNames = useAlertFolderNames();
 
   // Marque tout comme lu dès l'ouverture de l'écran.
@@ -47,17 +49,6 @@ export default function AlertsScreen() {
     markSeen.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function confirmDelete(rule: AlertRule) {
-    Alert.alert(
-      'Supprimer cette alerte ?',
-      describeRule(rule, folderNames[rule.folder_id ?? '']),
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => deleteRule.mutate(rule.id) },
-      ]
-    );
-  }
 
   if (isLoading || !data) return <Loading />;
 
@@ -107,7 +98,7 @@ export default function AlertsScreen() {
                     rule={rule}
                     folderNames={folderNames}
                     onToggle={(enabled) => toggleRule.mutate({ id: rule.id, enabled })}
-                    onDelete={() => confirmDelete(rule)}
+                    onDelete={() => setPendingDelete(rule)}
                   />
                 ))}
               </View>
@@ -134,6 +125,23 @@ export default function AlertsScreen() {
       />
 
       <CreateRuleModal visible={creating} onClose={() => setCreating(false)} />
+
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        title="Supprimer cette alerte ?"
+        message={
+          pendingDelete
+            ? describeRule(pendingDelete, folderNames[pendingDelete.folder_id ?? ''])
+            : undefined
+        }
+        confirmLabel="Supprimer la règle"
+        loading={deleteRule.isPending}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteRule.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
+        }}
+      />
     </Screen>
   );
 }

@@ -2,13 +2,15 @@
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icons';
 import {
   AppBar,
   AppText,
   Button,
+  ConfirmDialog,
+  Diamond,
   EmptyState,
   FormField,
   IconButton,
@@ -33,19 +35,7 @@ export default function DashboardScreen() {
   const { data, isLoading, refetch, isRefetching } = useDashboard();
   const deleteFolder = useDeleteFolder();
   const [creating, setCreating] = useState(false);
-
-  function confirmDeleteFolder(folder: FolderEntry) {
-    Alert.alert(
-      `Supprimer « ${folder.name} » ?`,
-      folder.itemCount > 0
-        ? `Les ${folder.itemCount} cartes qu'il contient seront retirées de ta collection.`
-        : 'Ce dossier est vide.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => deleteFolder.mutate(folder.id) },
-      ]
-    );
-  }
+  const [pendingDelete, setPendingDelete] = useState<FolderEntry | null>(null);
 
   if (isLoading || !data) return <Loading />;
 
@@ -70,12 +60,16 @@ export default function DashboardScreen() {
         onRefresh={refetch}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Surface style={styles.valueCard}>
+            <Surface tone="plate" style={styles.valueCard}>
               <AppText variant="overline">Valeur de la collection</AppText>
               <AppText variant="display">{formatEur(data.totalValue)}</AppText>
-              <AppText variant="caption">
-                {data.totalCards} carte{data.totalCards > 1 ? 's' : ''} · prix Cardmarket via Scryfall
-              </AppText>
+              <View style={styles.valueFoot}>
+                <Diamond size={4} color={Colors.borderStrong} />
+                <AppText variant="caption">
+                  {data.totalCards} carte{data.totalCards > 1 ? 's' : ''} · prix Cardmarket via
+                  Scryfall
+                </AppText>
+              </View>
             </Surface>
 
             <SectionHeader
@@ -96,12 +90,29 @@ export default function DashboardScreen() {
           <FolderRow
             folder={item}
             onOpen={() => router.push({ pathname: '/folder/[id]', params: { id: item.id } })}
-            onDelete={() => confirmDeleteFolder(item)}
+            onDelete={() => setPendingDelete(item)}
           />
         )}
       />
 
       <CreateFolderSheet visible={creating} onClose={() => setCreating(false)} />
+
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        title={`Supprimer « ${pendingDelete?.name} » ?`}
+        message={
+          pendingDelete && pendingDelete.itemCount > 0
+            ? `Les ${pendingDelete.itemCount} cartes qu'il contient seront retirées de ta collection.`
+            : 'Ce dossier est vide.'
+        }
+        confirmLabel="Supprimer le dossier"
+        loading={deleteFolder.isPending}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          deleteFolder.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
+        }}
+      />
     </Screen>
   );
 }
@@ -115,35 +126,41 @@ function FolderRow({
   onOpen: () => void;
   onDelete: () => void;
 }) {
+  // Deux zones sœurs, jamais imbriquées : ouvrir (toute la ligne) et
+  // supprimer (le bouton). Imbriquer les deux produisait un `<button>` dans
+  // un `<button>` sur le web — invalide, et le clic partait au mauvais.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Ouvrir le dossier ${folder.name}`}
-      onPress={onOpen}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-      <View style={[styles.dot, { backgroundColor: folder.color ?? Colors.accent }]} />
+    <View style={styles.row}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Ouvrir le dossier ${folder.name}`}
+        onPress={onOpen}
+        style={({ pressed }) => [styles.rowMain, pressed && styles.rowPressed]}>
+        <View style={[styles.dot, { backgroundColor: folder.color ?? Colors.accent }]} />
 
-      <View style={styles.rowBody}>
-        <View style={styles.rowTitleLine}>
-          <AppText variant="heading" numberOfLines={1}>
-            {folder.name}
+        <View style={styles.rowBody}>
+          <View style={styles.rowTitleLine}>
+            <AppText variant="heading" numberOfLines={1}>
+              {folder.name}
+            </AppText>
+            {folder.kind === 'wishlist' ? <Pill label="Wishlist" tone="accent" /> : null}
+          </View>
+          <AppText variant="caption">
+            {folder.itemCount} carte{folder.itemCount > 1 ? 's' : ''}
           </AppText>
-          {folder.kind === 'wishlist' ? <Pill label="Wishlist" tone="accent" /> : null}
         </View>
-        <AppText variant="caption">
-          {folder.itemCount} carte{folder.itemCount > 1 ? 's' : ''}
-        </AppText>
-      </View>
 
-      <AppText variant="price">{folder.value === null ? '—' : formatEur(folder.value)}</AppText>
+        <AppText variant="price">{folder.value === null ? '—' : formatEur(folder.value)}</AppText>
+        <Icon name="chevronRight" size={16} color={Colors.textTertiary} />
+      </Pressable>
+
       <IconButton
         name="trash"
         label={`Supprimer le dossier ${folder.name}`}
         onPress={onDelete}
         size="sm"
       />
-      <Icon name="chevronRight" size={16} color={Colors.textTertiary} />
-    </Pressable>
+    </View>
   );
 }
 
@@ -233,18 +250,27 @@ function CreateFolderSheet({ visible, onClose }: { visible: boolean; onClose: ()
 const styles = StyleSheet.create({
   list: { paddingHorizontal: Space.lg, paddingBottom: Space.xxl, gap: Space.sm, flexGrow: 1 },
   header: { gap: Space.lg, marginBottom: Space.sm },
-  valueCard: { gap: Space.xs, alignItems: 'flex-start' },
+  valueCard: { gap: Space.xs, alignItems: 'flex-start', paddingVertical: Space.xl },
+  valueFoot: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Space.md,
-    paddingVertical: Space.md,
-    paddingHorizontal: Space.lg,
+    paddingRight: Space.sm,
     backgroundColor: Colors.surface,
     borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  rowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingVertical: Space.md,
+    paddingLeft: Space.lg,
+    paddingRight: Space.sm,
   },
   rowPressed: { backgroundColor: Colors.surfaceHover },
   rowBody: { flex: 1, gap: 2 },

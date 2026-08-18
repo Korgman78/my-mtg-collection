@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icons';
-import { AppText, Button, Screen, TextField } from '@/components/ui';
+import { AppText, Button, Divider, Screen, TextField } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 
@@ -42,9 +42,12 @@ export default function LoginScreen() {
         style={styles.container}>
         <View style={styles.hero}>
           <View style={styles.mark}>
-            <Icon name="layers" size={22} color={Colors.text} strokeWidth={1.8} />
+            <Icon name="layers" size={22} color={Colors.accent} strokeWidth={1.8} />
           </View>
-          <AppText variant="title">Grimoire</AppText>
+          <AppText variant="title" style={styles.wordmark}>
+            Grimoire
+          </AppText>
+          <Divider ornament style={styles.heroRule} />
           <AppText variant="body" style={styles.tagline}>
             Ta collection Magic, ses prix, et leurs mouvements.
           </AppText>
@@ -126,13 +129,17 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Space.xs,
   },
+  // Le nom de l'app est le seul texte de l'app à respirer : lettres écartées,
+  // comme un titre frappé sur une couverture.
+  wordmark: { letterSpacing: 2, textTransform: 'uppercase' },
+  heroRule: { width: 120 },
   tagline: { color: Colors.textSecondary, textAlign: 'center', maxWidth: 280 },
   form: { gap: Space.lg },
   notice: { borderRadius: Radius.md, padding: Space.md },

@@ -1,68 +1,80 @@
 // Design tokens de Grimoire.
 //
-// Direction : sobre & premium. Fond quasi-noir neutre, surfaces qui se
-// distinguent par de très faibles écarts de luminosité plutôt que par des
-// bordures marquées, un accent froid unique réservé aux actions.
+// Direction : grimoire — encre chaude, parchemin, dorure.
 //
-// Règle d'usage de l'accent : il signale ce sur quoi on peut agir, jamais
-// une simple décoration. Un écran qui a trois zones accentuées a un problème
-// de hiérarchie, pas besoin d'une quatrième couleur.
+// Le fond n'est pas un noir neutre mais un noir brun (une encre sur cuir),
+// le texte n'est pas blanc mais parchemin, et l'accent est un or vieilli.
+// C'est ce triangle qui porte tout l'univers : la typographie, elle, reste
+// une sans-serif système parfaitement neutre. Un grimoire se lit, il ne se
+// déchiffre pas.
+//
+// Règle d'usage de l'or : il signale ce sur quoi on peut agir et les titres
+// de section. Jamais un bloc entier de texte — l'or vaut par sa rareté.
 
 import { Platform } from 'react-native';
 
 export const Colors = {
-  // Fonds, du plus profond au plus élevé.
-  bg: '#0A0A0B',
-  surface: '#131315',
-  surfaceAlt: '#1A1A1D',
-  surfaceHover: '#202024',
+  // Fonds, du plus profond au plus élevé. Chaque palier reste chaud :
+  // un gris neutre au milieu de cette pile se voit immédiatement.
+  bg: '#0B0907',
+  surface: '#14110D',
+  surfaceAlt: '#1C1813',
+  surfaceHover: '#251F18',
 
-  // Séparations. `border` doit rester à la limite du perceptible.
-  border: '#232327',
-  borderStrong: '#2F2F35',
+  // Séparations. `border` doit rester à la limite du perceptible ;
+  // `rule` est la version dorée, réservée aux encadrements.
+  border: '#292219',
+  borderStrong: '#3A3122',
+  rule: 'rgba(201, 162, 39, 0.28)',
 
-  // Texte, trois niveaux suffisent.
-  text: '#ECECEE',
-  textSecondary: '#8C8C96',
-  textTertiary: '#5A5A63',
+  // Texte, trois niveaux suffisent. Le principal tire sur le parchemin.
+  text: '#EFE6D5',
+  textSecondary: '#9D9179',
+  textTertiary: '#6D6353',
 
-  // Accent unique, froid et légèrement désaturé.
-  accent: '#6C74E0',
-  accentHover: '#7E86EA',
-  accentSoft: 'rgba(108, 116, 224, 0.14)',
-  accentBorder: 'rgba(108, 116, 224, 0.38)',
-  onAccent: '#FFFFFF',
+  // Accent unique : or vieilli. Le texte posé dessus est de l'encre,
+  // pas du blanc — du blanc sur cet or ne passe aucun seuil de contraste.
+  accent: '#C9A227',
+  accentHover: '#DEB63D',
+  accentSoft: 'rgba(201, 162, 39, 0.13)',
+  accentBorder: 'rgba(201, 162, 39, 0.42)',
+  onAccent: '#171106',
 
-  // Sémantique : hausse / baisse / foil. Volontairement peu saturées pour
-  // ne pas concurrencer l'accent.
-  up: '#3FB950',
-  upSoft: 'rgba(63, 185, 80, 0.12)',
-  down: '#E5534B',
-  downSoft: 'rgba(229, 83, 75, 0.12)',
-  flat: '#6E6E78',
-  foil: '#58A6FF',
-  foilSoft: 'rgba(88, 166, 255, 0.12)',
+  // Sémantique : hausse / baisse / foil. Teintes de pigment plutôt que
+  // de LED, pour rester dans le même monde que l'or.
+  up: '#63A96F',
+  upSoft: 'rgba(99, 169, 111, 0.13)',
+  down: '#C4564B',
+  downSoft: 'rgba(196, 86, 75, 0.13)',
+  flat: '#7A7060',
+  // Le foil reste froid : c'est le seul point de l'app qui doit trancher
+  // avec l'or, sinon on ne distingue plus un foil d'une action.
+  foil: '#9A8CE0',
+  foilSoft: 'rgba(154, 140, 224, 0.14)',
 
-  danger: '#E5534B',
-  dangerSoft: 'rgba(229, 83, 75, 0.10)',
-  dangerBorder: 'rgba(229, 83, 75, 0.35)',
+  danger: '#C4564B',
+  dangerSoft: 'rgba(196, 86, 75, 0.11)',
+  dangerBorder: 'rgba(196, 86, 75, 0.38)',
 
-  overlay: 'rgba(0, 0, 0, 0.68)',
-  skeleton: '#1E1E22',
+  overlay: 'rgba(6, 5, 3, 0.74)',
+  skeleton: '#1E1913',
 } as const;
 
-// Pastilles de dossier : teintes désaturées qui cohabitent avec l'accent.
+// Pastilles de dossier : les cinq couleurs de mana en pigments assourdis,
+// plus un cuivre. Un joueur lit ces teintes sans légende.
 export const FolderColors = [
-  '#6C74E0',
-  '#58A6FF',
-  '#3FB950',
-  '#D9A441',
-  '#E5534B',
-  '#A874D9',
+  '#C9A227', // or / blanc
+  '#5A8FC7', // azur / bleu
+  '#8A72C9', // améthyste / noir
+  '#C4564B', // rubis / rouge
+  '#63A96F', // émeraude / vert
+  '#B0754A', // cuivre
 ] as const;
 
 // Piles de polices système. On n'embarque aucune fonte : la pile native de
-// chaque plateforme est déjà la plus lisible et coûte zéro octet.
+// chaque plateforme est déjà la plus lisible et coûte zéro octet. L'univers
+// grimoire vient de la couleur et des encadrements, pas d'une gothique
+// illisible à 12 px.
 //
 // Sur web on écrit la pile en clair plutôt qu'un `var(--font-display)` :
 // une variable CSS non résolue devient un nom de police invalide et le

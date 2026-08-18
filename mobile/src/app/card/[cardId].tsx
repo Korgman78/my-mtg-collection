@@ -4,7 +4,7 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { CreateRuleModal } from '@/components/create-rule-modal';
 import { PriceChart } from '@/components/price-chart';
@@ -13,6 +13,7 @@ import {
   AppText,
   Button,
   ChangeBadge,
+  ConfirmDialog,
   Divider,
   FinishBadge,
   Loading,
@@ -32,6 +33,7 @@ export default function CardScreen() {
   const { data, isLoading } = useCardDetail(cardId, itemId);
   const deleteItem = useDeleteItem();
   const [alerting, setAlerting] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   if (isLoading || !data) return <Loading />;
   const { card, snapshots, stats, item } = data;
@@ -57,22 +59,6 @@ export default function CardScreen() {
     item?.purchase_price_eur != null && currentPrice !== null
       ? (currentPrice - item.purchase_price_eur) * item.quantity
       : null;
-
-  function confirmRemove() {
-    if (!item) return;
-    Alert.alert(
-      `Retirer « ${card.name} » ?`,
-      'La carte est retirée de ce dossier. Son historique de prix est conservé.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Retirer',
-          style: 'destructive',
-          onPress: () => deleteItem.mutate(item.id, { onSuccess: () => router.back() }),
-        },
-      ]
-    );
-  }
 
   return (
     <Screen>
@@ -157,7 +143,7 @@ export default function CardScreen() {
               label="Retirer du dossier"
               icon="trash"
               variant="danger"
-              onPress={confirmRemove}
+              onPress={() => setRemoving(true)}
               loading={deleteItem.isPending}
             />
           ) : null}
@@ -172,6 +158,22 @@ export default function CardScreen() {
         visible={alerting}
         onClose={() => setAlerting(false)}
         preset={{ cardId: card.id, cardName: card.name, finish }}
+      />
+
+      <ConfirmDialog
+        visible={removing}
+        title={`Retirer « ${card.name} » ?`}
+        message="La carte est retirée de ce dossier. Son historique de prix est conservé."
+        confirmLabel="Retirer la carte"
+        loading={deleteItem.isPending}
+        onCancel={() => setRemoving(false)}
+        onConfirm={() => {
+          if (!item) return;
+          deleteItem.mutate(item.id, {
+            onSuccess: () => router.back(),
+            onSettled: () => setRemoving(false),
+          });
+        }}
       />
     </Screen>
   );
