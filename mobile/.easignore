@@ -1,0 +1,22 @@
+# Ce qui ne monte pas sur le serveur de build EAS.
+#
+# En présence de ce fichier, EAS l'utilise à la place de .gitignore pour
+# décider quoi téléverser.
+#
+# package-lock.json est exclu volontairement. Il est généré sous Windows,
+# où npm élague les dépendances optionnelles des autres plateformes et
+# construit un arbre différent. Sur le serveur Linux, `npm ci` échouait
+# donc sur « Missing: @emnapi/core from lock file » — une chaîne tirée par
+# eslint, dont le build n'a même pas besoin.
+#
+# Sans verrou, EAS lance `npm install` et résout pour sa propre
+# plateforme. On perd la reproductibilité au bit près et on garde des
+# builds qui aboutissent ; le verrou continue de servir en local.
+
+node_modules/
+.env
+.env.*
+*.log
+.expo/
+dist/
+package-lock.json
