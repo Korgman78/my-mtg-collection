@@ -10,7 +10,13 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Button, FormField, Segmented, Sheet, TextField } from '@/components/ui';
 import { Colors, Control, Radius, Space } from '@/constants/theme';
-import { useCreateRule, type AlertMetric } from '@/lib/alerts';
+import {
+  useCreateRule,
+  RARITIES,
+  RARITY_LABELS,
+  type AlertMetric,
+  type Rarity,
+} from '@/lib/alerts';
 import { supabase } from '@/lib/supabase';
 import type { Finish, Folder } from '@/lib/types';
 
@@ -33,6 +39,9 @@ export function CreateRuleModal({
   const [direction, setDirection] = useState<'up' | 'down' | 'both'>('both');
   const [channel, setChannel] = useState<'digest' | 'immediate'>('digest');
   const [threshold, setThreshold] = useState('10');
+  // Aucune rareté cochée = toutes, ce qui reproduit le comportement d'avant
+  // ce filtre. On n'oblige donc personne à choisir.
+  const [rarities, setRarities] = useState<Rarity[]>([]);
 
   const folders = useQuery({
     queryKey: ['collection', 'folders-lite'],
@@ -69,6 +78,7 @@ export function CreateRuleModal({
         direction:
           metric === 'threshold_above' ? 'up' : metric === 'threshold_below' ? 'down' : direction,
         channel,
+        rarities: rarities.length > 0 ? rarities : null,
       },
       { onSuccess: onClose }
     );
@@ -91,7 +101,15 @@ export function CreateRuleModal({
       <View style={styles.summary}>
         <AppText variant="overline">Résumé</AppText>
         <AppText variant="body">
-          {summarise({ scopeText, metric, windowDays, direction, threshold: parsedThreshold, channel })}
+          {summarise({
+            scopeText,
+            metric,
+            windowDays,
+            direction,
+            threshold: parsedThreshold,
+            channel,
+            rarities,
+          })}
         </AppText>
       </View>
 
@@ -130,6 +148,43 @@ export function CreateRuleModal({
               ) : null}
             </View>
           )}
+        </FormField>
+      )}
+
+      {/* Le filtre n'a de sens qu'à portée collection ou dossier : sur une
+          carte précise, sa rareté est déjà connue. */}
+      {!preset && (
+        <FormField label="Raretés surveillées">
+          <View style={styles.rarityRow}>
+            {RARITIES.map((r) => {
+              const active = rarities.includes(r);
+              return (
+                <Pressable
+                  key={r}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={RARITY_LABELS[r]}
+                  onPress={() =>
+                    setRarities((current) =>
+                      current.includes(r) ? current.filter((x) => x !== r) : [...current, r]
+                    )
+                  }
+                  style={[styles.folderChip, active && styles.folderChipActive]}>
+                  <AppText
+                    variant="caption"
+                    numberOfLines={1}
+                    style={active ? { color: Colors.text, fontWeight: '600' } : undefined}>
+                    {RARITY_LABELS[r]}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+          <AppText variant="caption">
+            {rarities.length === 0
+              ? 'Aucune cochée : toutes les raretés sont surveillées.'
+              : 'Une commune qui prend 100 % gagne quelques centimes ; une mythique qui prend 20 % en gagne plusieurs euros. Sépare les deux en créant une règle par groupe, avec son propre seuil.'}
+          </AppText>
         </FormField>
       )}
 
@@ -221,6 +276,7 @@ function summarise({
   direction,
   threshold,
   channel,
+  rarities,
 }: {
   scopeText: string;
   metric: AlertMetric;
@@ -228,21 +284,29 @@ function summarise({
   direction: 'up' | 'down' | 'both';
   threshold: number;
   channel: 'digest' | 'immediate';
+  rarities: Rarity[];
 }): string {
   const amount = Number.isFinite(threshold) ? threshold.toString().replace('.', ',') : '…';
   const how =
     channel === 'immediate' ? 'par email dès le lendemain' : 'dans le récap hebdomadaire du dimanche';
 
+  // La rareté s'insère dans la phrase plutôt qu'en suffixe : « une commune ou
+  // peu commune de ta collection » se lit, « ta collection · commune » non.
+  const kinds =
+    rarities.length === 0 || rarities.length === RARITIES.length
+      ? 'carte'
+      : rarities.map((r) => RARITY_LABELS[r].toLowerCase()).join(' ou ');
+
   if (metric === 'corridor_breakout')
-    return `On te prévient ${how} quand une carte de ${scopeText} sort de son couloir de prix habituel.`;
+    return `On te prévient ${how} quand une ${kinds} de ${scopeText} sort de son couloir de prix habituel.`;
   if (metric === 'threshold_above')
-    return `On te prévient ${how} quand une carte de ${scopeText} atteint ${amount} €.`;
+    return `On te prévient ${how} quand une ${kinds} de ${scopeText} atteint ${amount} €.`;
   if (metric === 'threshold_below')
-    return `On te prévient ${how} quand une carte de ${scopeText} descend à ${amount} €.`;
+    return `On te prévient ${how} quand une ${kinds} de ${scopeText} descend à ${amount} €.`;
 
   const move =
     direction === 'up' ? 'monte' : direction === 'down' ? 'baisse' : 'bouge';
-  return `On te prévient ${how} quand une carte de ${scopeText} ${move} de plus de ${amount} % sur ${windowDays} jour${windowDays > 1 ? 's' : ''}.`;
+  return `On te prévient ${how} quand une ${kinds} de ${scopeText} ${move} de plus de ${amount} % sur ${windowDays} jour${windowDays > 1 ? 's' : ''}.`;
 }
 
 const styles = StyleSheet.create({
@@ -254,6 +318,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.accentBorder,
   },
+  rarityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
   folderList: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm, marginTop: Space.xs },
   folderChip: {
     minHeight: Control.sm,

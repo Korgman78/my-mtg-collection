@@ -20,8 +20,24 @@ export type AlertRule = {
   threshold: number | null;
   direction: 'up' | 'down' | 'both';
   channel: 'digest' | 'immediate';
+  /** Raretés surveillées. `null` = toutes. */
+  rarities: Rarity[] | null;
   enabled: boolean;
   created_at: string;
+};
+
+/** Raretés Scryfall retenues pour le filtre. `special` et `bonus` existent
+ *  aussi mais ne concernent que des produits marginaux : les exposer
+ *  encombrerait l'écran pour une poignée de cartes. */
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'mythic';
+
+export const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'mythic'];
+
+export const RARITY_LABELS: Record<Rarity, string> = {
+  common: 'Commune',
+  uncommon: 'Peu commune',
+  rare: 'Rare',
+  mythic: 'Mythique',
 };
 
 export type AlertEvent = {
@@ -50,6 +66,7 @@ export type NewAlertRule = {
   threshold: number | null;
   direction: 'up' | 'down' | 'both';
   channel: 'digest' | 'immediate';
+  rarities?: Rarity[] | null;
 };
 
 function throwIfError<T>(res: { data: T | null; error: { message: string } | null }): T {
@@ -151,5 +168,13 @@ export function describeRule(rule: AlertRule, folderName?: string, cardName?: st
   const direction =
     rule.direction === 'both' ? '' : rule.direction === 'up' ? ' · hausses' : ' · baisses';
   const channel = rule.channel === 'digest' ? 'digest hebdo' : 'email immédiat';
-  return `${scope} · ${metric}${direction} · ${channel}`;
+
+  // La rareté n'apparaît que si elle restreint quelque chose : « toutes les
+  // raretés » sur chaque règle serait du bruit.
+  const rarities =
+    rule.rarities && rule.rarities.length > 0 && rule.rarities.length < RARITIES.length
+      ? ` · ${rule.rarities.map((r) => RARITY_LABELS[r] ?? r).join(', ').toLowerCase()}`
+      : '';
+
+  return `${scope}${rarities} · ${metric}${direction} · ${channel}`;
 }
