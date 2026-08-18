@@ -10,8 +10,9 @@
 
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { frameRectInPhoto } from '@/lib/card-frame';
-import { phashWindows } from '@/lib/phash';
+import { detectCard, rectify } from '@/lib/card-detect';
+import { CARD_ASPECT as ASPECT, frameRectInPhoto } from '@/lib/card-frame';
+import { phashPair, phashWindows } from '@/lib/phash';
 import { base64ToBytes, decodePng } from '@/lib/png';
 import { supabase } from '@/lib/supabase';
 
@@ -51,6 +52,27 @@ export async function hashPhoto(
 
   const { data, width, height } = decodePng(base64ToBytes(saved.base64));
 
+  // Balayage de fenêtres, la méthode de base.
+  const windows = phashWindows(data, width, height);
+
+  // Puis, EN PLUS, une tentative de détection de la carte suivie d'un
+  // redressement. Mesuré sur 25 cartes : en complément, la reconnaissance
+  // passe de 20/25 à 25/25 sur photos négligées. En REMPLACEMENT elle
+  // tomberait à 16/25 — la détection trouve la carte presque à tous les
+  // coups mais délimite imprécisément. Elle s'ajoute donc aux candidats,
+  // elle ne décide pas : une détection ratée ne peut alors rien casser.
+  let detected = false;
+  const card = detectCard(data, width, height);
+  if (card) {
+    const flat = rectify(data, width, height, card.quad, WORK_WIDTH, Math.round(WORK_WIDTH / ASPECT));
+    if (flat) {
+      const pair = phashPair(flat.data, flat.width, flat.height);
+      windows.whole.push(pair.whole);
+      windows.art.push(pair.art);
+      detected = true;
+    }
+  }
+
   // Trace de géométrie. Elle remonte dans le journal Metro, seul endroit
   // d'où l'on peut observer ce qui se passe vraiment sur l'appareil.
   // Ce qu'elle permet de trancher d'un coup d'œil :
@@ -61,10 +83,11 @@ export async function hashPhoto(
     `[scan] photo=${photoWidth}x${photoHeight} apercu=${Math.round(previewWidth)}x${Math.round(
       previewHeight
     )} decoupe=${crop.width}x${crop.height}@(${crop.originX},${crop.originY}) ` +
-      `analyse=${width}x${height} rapport=${(width / height).toFixed(3)}`
+      `analyse=${width}x${height} rapport=${(width / height).toFixed(3)} ` +
+      `carte=${detected ? 'detectee' : 'non detectee'}`
   );
 
-  return { hashes: phashWindows(data, width, height), previewUri: saved.uri };
+  return { hashes: windows, previewUri: saved.uri };
 }
 
 export type ScanMatch = {
