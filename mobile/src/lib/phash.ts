@@ -179,13 +179,69 @@ const CENTERS: [number, number][] = [
   [0.5, 0.53],
 ];
 
-/** Les hachages d'une photo : un par fenêtre. */
+/**
+ * Fenêtre d'illustration d'une carte, en fractions de la carte.
+ *
+ * Pourquoi elle existe : hacher la carte ENTIÈRE ne discrimine pas assez.
+ * Toutes les cartes Magic partagent la même charpente — bordure, bandeau de
+ * titre, cadre d'illustration, bloc de texte, bandeau bas — et à 32×32 cette
+ * charpente occupe l'essentiel des basses fréquences. Mesuré sur 40 cartes :
+ * deux cartes DIFFÉRENTES peuvent n'être qu'à 10 bits l'une de l'autre sur la
+ * carte entière, contre 16 sur la seule illustration. Or une photo à main
+ * levée dégrade d'environ 14 bits. Sur la carte entière, le bruit dépassait
+ * donc le signal — c'est très exactement ce qu'on observait sur l'appareil,
+ * avec tous les candidats agglutinés entre 10 et 14.
+ *
+ * Sur photo à main levée simulée, la reconnaissance passe de 30/40 (carte
+ * entière) à 38/40 (illustration).
+ */
+export const ART_REGION = { x: 0.075, y: 0.115, w: 0.85, h: 0.42 };
+
+/** Hachage de la seule illustration, dans un rectangle qui contient la carte. */
+function artHashOf(
+  rgba: ArrayLike<number>,
+  width: number,
+  card: { x: number; y: number; w: number; h: number }
+): string {
+  return phashFromGray32(
+    gray32FromRegion(
+      rgba,
+      width,
+      Math.round(card.x + card.w * ART_REGION.x),
+      Math.round(card.y + card.h * ART_REGION.y),
+      Math.max(GRID, Math.round(card.w * ART_REGION.w)),
+      Math.max(GRID, Math.round(card.h * ART_REGION.h))
+    )
+  );
+}
+
+/** Hachage de toute la région passée. */
+function wholeHashOf(
+  rgba: ArrayLike<number>,
+  width: number,
+  card: { x: number; y: number; w: number; h: number }
+): string {
+  return phashFromGray32(gray32FromRegion(rgba, width, card.x, card.y, card.w, card.h));
+}
+
+/** Les deux empreintes d'une image supposée cadrée sur une carte. */
+export function phashPair(
+  rgba: ArrayLike<number>,
+  width: number,
+  height: number
+): { whole: string; art: string } {
+  const card = { x: 0, y: 0, w: width, h: height };
+  return { whole: wholeHashOf(rgba, width, card), art: artHashOf(rgba, width, card) };
+}
+
+/** Les hachages d'une photo : deux par fenêtre (carte entière et illustration). */
 export function phashWindows(
   rgba: ArrayLike<number>,
   width: number,
   height: number
-): string[] {
-  const hashes: string[] = [];
+): { whole: string[]; art: string[] } {
+  const whole: string[] = [];
+  const art: string[] = [];
 
   for (const scale of SCALES) {
     const w = Math.max(GRID, Math.round(width * scale));
@@ -194,11 +250,13 @@ export function phashWindows(
     for (const [cx, cy] of CENTERS) {
       const x = Math.min(Math.max(0, Math.round(width * cx - w / 2)), width - w);
       const y = Math.min(Math.max(0, Math.round(height * cy - h / 2)), height - h);
-      hashes.push(phashFromGray32(gray32FromRegion(rgba, width, x, y, w, h)));
+      const card = { x, y, w, h };
+      whole.push(wholeHashOf(rgba, width, card));
+      art.push(artHashOf(rgba, width, card));
     }
   }
 
-  return hashes;
+  return { whole, art };
 }
 
 /** Distance de Hamming entre deux hachages en chaîne de bits. */

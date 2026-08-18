@@ -21,7 +21,7 @@
 import jpeg from 'jpeg-js';
 import { PNG } from 'pngjs';
 
-import { gray32FromRgba, phashFromGray32, phashWindows } from '../mobile/src/lib/phash.ts';
+import { phashPair, phashWindows } from '../mobile/src/lib/phash.ts';
 import { decodePng } from '../mobile/src/lib/png.ts';
 import { frameRect } from '../mobile/src/lib/card-frame.ts';
 
@@ -134,7 +134,7 @@ function appHashes(photo) {
   const cropped = cropRect(photo, frameRect(photo.width, photo.height));
   const small = resizeTo(cropped, 256);
   const decoded = decodePng(new Uint8Array(toPng(small)));
-  return phashWindows(decoded.data, decoded.width, decoded.height);
+  return phashWindows(decoded.data, decoded.width, decoded.height).art;
 }
 
 /* --- Essai ---------------------------------------------------------------- */
@@ -169,7 +169,7 @@ async function main() {
     reference.push({
       name: card.name,
       normal: uris.normal,
-      hash: phashFromGray32(gray32FromRgba(img.data, img.width, img.height)),
+      hash: phashPair(img.data, img.width, img.height).art,
     });
     await sleep(110);
   }

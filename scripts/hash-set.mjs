@@ -24,7 +24,7 @@
 import jpeg from 'jpeg-js';
 import pg from 'pg';
 
-import { gray32FromRgba, phashFromGray32 } from '../mobile/src/lib/phash.ts';
+import { phashPair } from '../mobile/src/lib/phash.ts';
 
 const HEADERS = {
   'User-Agent': 'my-mtg-collection/0.1 (scanner reference hashing)',
@@ -116,7 +116,9 @@ async function hashCardImage(card) {
   // `useTArray` renvoie un Uint8Array plutôt qu'un Buffer : c'est la même
   // forme de donnée que celle que l'app obtiendra en décodant son PNG.
   const { data, width, height } = jpeg.decode(buffer, { useTArray: true });
-  return phashFromGray32(gray32FromRgba(data, width, height));
+  // Deux empreintes : la carte entière et sa seule illustration. C'est la
+  // seconde qui porte la reconnaissance — voir la migration art_hashes.
+  return phashPair(data, width, height);
 }
 
 /** Vérifie que la cible existe AVANT de télécharger quoi que ce soit.
@@ -146,10 +148,13 @@ async function hashSet(db, setCode, dryRun) {
   // Reprise : ce qui est déjà en base ne se re-télécharge pas. C'est ce qui
   // rend le job interruptible, et une relance après ajout d'un set coûte
   // quelques secondes au lieu de tout recommencer.
+  //
+  // On ne considère « fait » qu'une ligne qui porte AUSSI l'empreinte de
+  // l'illustration : les lignes d'avant ce changement doivent être refaites.
   let done = new Set();
   if (db) {
     const { rows: existing } = await db.query(
-      'select card_id from card_hashes where set_code = $1',
+      'select card_id from card_hashes where set_code = $1 and art_phash is not null',
       [set.code]
     );
     done = new Set(existing.map((r) => r.card_id));
@@ -171,8 +176,8 @@ async function hashSet(db, setCode, dryRun) {
 
   for (const [i, card] of cards.entries()) {
     try {
-      const phash = await hashCardImage(card);
-      if (!phash) {
+      const hashes = await hashCardImage(card);
+      if (!hashes) {
         skipped++;
       } else {
         rows.push([
@@ -184,7 +189,8 @@ async function hashSet(db, setCode, dryRun) {
           imageUris(card).small ?? null,
           imageUris(card).normal ?? null,
           card.released_at ?? null,
-          phash,
+          hashes.whole,
+          hashes.art,
         ]);
       }
     } catch (err) {
@@ -202,10 +208,11 @@ async function hashSet(db, setCode, dryRun) {
   // Un contrôle qui vaut la peine : deux cartes distinctes qui partagent un
   // hachage signalent une illustration réellement identique (rééditions) ou
   // un algorithme dégénéré. On l'affiche sans bloquer.
+  // Le contrôle porte sur l'illustration, celle qui décide désormais.
   const seen = new Map();
   let collisions = 0;
   for (const r of rows) {
-    const key = r[8];
+    const key = r[9];
     if (seen.has(key)) collisions++;
     else seen.set(key, r[2]);
   }
@@ -220,15 +227,16 @@ async function hashSet(db, setCode, dryRun) {
     const values = batch
       .map(
         (_, i) =>
-          `($${i * 9 + 1},$${i * 9 + 2},$${i * 9 + 3},$${i * 9 + 4},$${i * 9 + 5},$${i * 9 + 6},$${i * 9 + 7},$${i * 9 + 8},$${i * 9 + 9}::bit(64))`
+          `($${i * 10 + 1},$${i * 10 + 2},$${i * 10 + 3},$${i * 10 + 4},$${i * 10 + 5},$${i * 10 + 6},$${i * 10 + 7},$${i * 10 + 8},$${i * 10 + 9}::bit(64),$${i * 10 + 10}::bit(64))`
       )
       .join(',');
     await db.query(
       `insert into card_hashes
-         (card_id, set_code, name, collector_number, rarity, image_small, image_normal, released_at, phash)
+         (card_id, set_code, name, collector_number, rarity, image_small, image_normal, released_at, phash, art_phash)
        values ${values}
        on conflict (card_id) do update set
          phash = excluded.phash,
+         art_phash = excluded.art_phash,
          name = excluded.name,
          image_small = excluded.image_small,
          image_normal = excluded.image_normal,

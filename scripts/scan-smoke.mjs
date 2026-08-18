@@ -109,8 +109,9 @@ async function main() {
       const hashes = phashWindows(photo.data, photo.width, photo.height);
 
       const { rows: matches } = await db.query(
-        'select name, set_code, collector_number, distance from match_card_hashes($1::text[], 14, 3)',
-        [hashes]
+        'select name, set_code, collector_number, distance, whole_distance ' +
+          'from match_card_hashes($1::text[], $2::text[], 18, 3)',
+        [hashes.whole, hashes.art]
       );
 
       const best = matches[0];
@@ -119,9 +120,10 @@ async function main() {
 
       const runnerUp = matches[1] ? `, 2e à ${matches[1].distance}` : '';
       console.log(
-        `${hit ? 'ok  ' : 'RATÉ'}  ${card.name.slice(0, 34).padEnd(34)} ` +
+        `${hit ? 'ok  ' : 'RATÉ'}  ${card.name.slice(0, 32).padEnd(32)} ` +
           (best
-            ? `→ ${best.name.slice(0, 30).padEnd(30)} distance ${String(best.distance).padStart(2)}${runnerUp}`
+            ? `→ ${best.name.slice(0, 28).padEnd(28)} illustr. ${String(best.distance).padStart(2)}` +
+              ` (carte ${String(best.whole_distance ?? '-').padStart(2)})${runnerUp}`
             : '→ aucun candidat')
       );
       await new Promise((r) => setTimeout(r, 120));

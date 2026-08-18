@@ -22,7 +22,7 @@ export { CARD_ASPECT, FRAME_FILL, frameRect, frameRectInPhoto } from '@/lib/card
 const WORK_WIDTH = 256;
 
 export type HashedPhoto = {
-  hashes: string[];
+  hashes: { whole: string[]; art: string[] };
   /** L'image réellement hachée. Affichée après un scan raté : voir ce que
    *  l'app a regardé vaut tous les journaux du monde. */
   previewUri: string;
@@ -75,7 +75,11 @@ export type ScanMatch = {
   rarity: string | null;
   image_small: string | null;
   image_normal: string | null;
+  /** Distance retenue : celle de l'illustration, qui décide. */
   distance: number;
+  /** Distance sur la carte entière. Utile au diagnostic : très proche sur la
+   *  carte mais loin sur l'illustration = deux cartes au même gabarit. */
+  whole_distance: number | null;
 };
 
 /** Interroge la référence. Renvoie des candidats CLASSÉS, pas une réponse.
@@ -85,9 +89,13 @@ export type ScanMatch = {
  *  différentes les plus proches (8 bits). Trancher seul produirait des
  *  ajouts silencieusement faux dans la collection — bien pire qu'un choix
  *  à confirmer. */
-export async function matchPhoto(hashes: string[], maxDistance = 14): Promise<ScanMatch[]> {
+export async function matchPhoto(
+  hashes: { whole: string[]; art: string[] },
+  maxDistance = 18
+): Promise<ScanMatch[]> {
   const { data, error } = await supabase.rpc('match_card_hashes', {
-    query_hashes: hashes,
+    query_hashes: hashes.whole,
+    art_hashes: hashes.art,
     max_distance: maxDistance,
     max_results: 5,
   });
@@ -108,7 +116,10 @@ export async function matchPhoto(hashes: string[], maxDistance = 14): Promise<Sc
  *   ≥ 25  on hache autre chose que la carte. Géométrie, orientation, ou
  *         set absent de l'index. Aucun réglage de seuil n'y changera rien.
  */
-export async function diagnoseScan(hashes: string[]): Promise<ScanMatch[]> {
+export async function diagnoseScan(hashes: {
+  whole: string[];
+  art: string[];
+}): Promise<ScanMatch[]> {
   return matchPhoto(hashes, 64);
 }
 
