@@ -3,3 +3,7 @@ node_modules/
 .env.*
 *.log
 .DS_Store
+
+# QR de développement : encode l'IP locale de la machine, donc périmé
+# ailleurs et à chaque changement de réseau. Se régénère avec `npm run qr`.
+expo-go-qr.png

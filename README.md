@@ -49,6 +49,13 @@ Ensuite le job tourne tout seul chaque nuit à 04:30 UTC.
 4. Scanne le QR code avec l'app **Expo Go** (iOS/Android), ou tape `w` pour
    ouvrir la version web.
 
+> Le QR n'est pas visible (serveur lancé en arrière-plan, terminal non
+> interactif) ? `npm run qr` écrit `expo-go-qr.png` à la racine et affiche
+> l'URL. **Elle doit commencer par `exp://`** : une adresse en `http://`
+> ouvre le navigateur au lieu d'Expo Go, et la caméra y est alors refusée
+> — les navigateurs n'autorisent `getUserMedia` qu'en https:// ou sur
+> localhost. C'est le piège n°1 pour tester le scanner.
+
 ## Activer le scanner
 
 Le scanner reconnaît une carte en comparant l'empreinte perceptuelle de la
