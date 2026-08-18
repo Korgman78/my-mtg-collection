@@ -14,7 +14,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icons';
 import {
@@ -69,6 +69,10 @@ export default function ScanScreen() {
   // dernière erreur pour les afficher.
   const [permissionNote, setPermissionNote] = useState<string | null>(null);
 
+  /** Ouvrir les réglages système n'existe QUE en natif : `react-native-web`
+   *  n'expose pas `Linking.openSettings`, et l'appeler plantait la page. */
+  const canOpenSettings = Platform.OS !== 'web';
+
   /** Demande la permission caméra, et retombe sur les réglages système si
    *  elle a déjà été refusée — dans ce cas `requestPermission` ne rouvre
    *  aucune boîte de dialogue et ne ferait donc rien de visible. */
@@ -80,7 +84,7 @@ export default function ScanScreen() {
         `Réponse : ${result.status}` +
           (result.granted ? '' : ` · redemandable : ${result.canAskAgain ? 'oui' : 'non'}`)
       );
-      if (!result.granted && !result.canAskAgain) {
+      if (!result.granted && !result.canAskAgain && canOpenSettings) {
         await Linking.openSettings();
       }
     } catch (err) {
@@ -134,9 +138,15 @@ export default function ScanScreen() {
           icon="card"
           title="La caméra est nécessaire"
           hint={
-            refused
-              ? "La caméra a été refusée. Le bouton ouvre les réglages du téléphone : autorise l'appareil photo pour Expo Go, puis reviens ici."
-              : "Le scanner reconnaît une carte à partir de sa photo. L'image ne quitte jamais le téléphone : seule son empreinte, 25 fois 64 bits, est envoyée."
+            // Sur le web, la cause est presque toujours la même et n'a rien
+            // à voir avec une permission : un navigateur refuse la caméra
+            // hors contexte sécurisé, c'est-à-dire hors https:// et
+            // localhost. Une IP locale en http:// n'en est pas un.
+            Platform.OS === 'web'
+              ? "Ouvert dans un navigateur. Les navigateurs n'autorisent la caméra qu'en https:// ou sur localhost — une adresse IP en http:// est refusée quoi qu'on fasse. Ouvre l'app dans Expo Go pour scanner."
+              : refused
+                ? "La caméra a été refusée. Le bouton ouvre les réglages du téléphone : autorise l'appareil photo pour Expo Go, puis reviens ici."
+                : "Le scanner reconnaît une carte à partir de sa photo. L'image ne quitte jamais le téléphone : seule son empreinte, 25 fois 64 bits, est envoyée."
           }
           action={{
             label: refused ? 'Ouvrir les réglages' : 'Autoriser la caméra',
@@ -144,21 +154,23 @@ export default function ScanScreen() {
           }}
         />
 
-        {/* Diagnostic. Tant que la caméra ne s'ouvre pas, ces trois lignes
-            valent mieux qu'un bouton qui semble ne rien faire. */}
+        {/* Diagnostic. Tant que la caméra ne s'ouvre pas, ces lignes valent
+            mieux qu'un bouton qui semble ne rien faire. */}
         <View style={styles.diagnostic}>
           <AppText variant="caption">
-            état : {permission.status} · redemandable :{' '}
+            {Platform.OS} · état : {permission.status} · redemandable :{' '}
             {permission.canAskAgain ? 'oui' : 'non'}
           </AppText>
           {permissionNote ? <AppText variant="caption">{permissionNote}</AppText> : null}
-          <Button
-            label="Ouvrir les réglages du téléphone"
-            icon="chevronRight"
-            variant="ghost"
-            size="sm"
-            onPress={() => Linking.openSettings()}
-          />
+          {canOpenSettings ? (
+            <Button
+              label="Ouvrir les réglages du téléphone"
+              icon="chevronRight"
+              variant="ghost"
+              size="sm"
+              onPress={() => Linking.openSettings()}
+            />
+          ) : null}
         </View>
       </Screen>
     );
