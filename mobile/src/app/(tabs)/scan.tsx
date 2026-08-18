@@ -31,12 +31,19 @@ import {
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useAddScannedCard, useFoldersLite, useHashedSets } from '@/lib/collection';
-import { CARD_ASPECT, confidenceOf, hashPhoto, matchPhoto, type ScanMatch } from '@/lib/scan';
+import {
+  CARD_ASPECT,
+  confidenceOf,
+  diagnoseScan,
+  hashPhoto,
+  matchPhoto,
+  type ScanMatch,
+} from '@/lib/scan';
 
 type Stage =
   | { step: 'idle' }
   | { step: 'working'; label: string }
-  | { step: 'results'; matches: ScanMatch[]; previewUri: string }
+  | { step: 'results'; matches: ScanMatch[]; previewUri: string; nearest: ScanMatch[] }
   | { step: 'error'; message: string };
 
 export default function ScanScreen() {
@@ -117,8 +124,31 @@ export default function ScanScreen() {
       );
       setStage({ step: 'working', label: 'Recherche dans la référence…' });
 
-      const matches = await matchPhoto(hashes);
-      setStage({ step: 'results', matches, previewUri });
+      let matches = await matchPhoto(hashes);
+
+      // Rien sous le seuil : on redemande sans seuil. Savoir si la meilleure
+      // correspondance est à 16 ou à 30 change complètement le diagnostic —
+      // et sans cette mesure, un échec ne nous apprend rien du tout.
+      let nearest: ScanMatch[] = [];
+      if (matches.length === 0) {
+        nearest = await diagnoseScan(hashes);
+        console.log(
+          `[scan] aucun match sous le seuil. Plus proches : ` +
+            (nearest.length === 0
+              ? 'aucun (index vide ?)'
+              : nearest
+                  .slice(0, 3)
+                  .map((m) => `${m.name} [${m.set_code}] ${m.distance}`)
+                  .join(' · '))
+        );
+      } else {
+        console.log(
+          `[scan] ${matches.length} candidat(s) : ` +
+            matches.map((m) => `${m.name} ${m.distance}`).join(' · ')
+        );
+      }
+
+      setStage({ step: 'results', matches, previewUri, nearest });
     } catch (err) {
       setStage({ step: 'error', message: err instanceof Error ? err.message : String(err) });
     }
@@ -370,6 +400,7 @@ function ResultSheet({
   const visible = stage.step === 'results' || stage.step === 'error';
   const matches = stage.step === 'results' ? stage.matches : [];
   const previewUri = stage.step === 'results' ? stage.previewUri : null;
+  const nearest = stage.step === 'results' ? stage.nearest : [];
   const confidence = confidenceOf(matches);
 
   return (
@@ -385,10 +416,34 @@ function ResultSheet({
         <View style={{ gap: Space.sm }}>
           <AppText variant="body">Aucune carte connue ne correspond.</AppText>
           <CropPreview uri={previewUri} />
+
+          {/* Le diagnostic chiffré : la distance de la plus proche dit
+              laquelle des trois causes est en jeu. Sans elle, un échec
+              n'apprend rien. */}
+          {nearest.length > 0 ? (
+            <View style={styles.nearest}>
+              <AppText variant="overline">Plus proches trouvées</AppText>
+              {nearest.slice(0, 3).map((m) => (
+                <AppText key={m.card_id} variant="caption" numberOfLines={1}>
+                  {m.distance} bits · {m.name} [{m.set_code.toUpperCase()}]
+                </AppText>
+              ))}
+              <AppText variant="caption" style={{ color: Colors.textTertiary }}>
+                {nearest[0].distance <= 22
+                  ? 'Proche : la bonne carte est probablement vue, mais dégradée (reflets, angle, cadrage).'
+                  : 'Loin : ce qui est analysé ne ressemble à aucune carte connue. Cadrage, orientation, ou set non indexé.'}
+              </AppText>
+            </View>
+          ) : (
+            <AppText variant="caption" style={{ color: Colors.danger }}>
+              La référence n&apos;a renvoyé aucune carte, même sans seuil. L&apos;index est
+              probablement vide.
+            </AppText>
+          )}
+
           <AppText variant="caption">
             Ci-dessus, l&apos;image que l&apos;app a réellement analysée. Si ce n&apos;est pas ta
-            carte bien à plat et bien cadrée, le problème est le cadrage — pas la reconnaissance.
-            Sinon, c&apos;est que le set n&apos;est pas encore indexé.
+            carte bien à plat et bien cadrée, le problème est le cadrage.
           </AppText>
         </View>
       ) : (
@@ -530,6 +585,14 @@ const styles = StyleSheet.create({
 
   confidenceLine: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
   cropWrap: { alignItems: 'center', gap: Space.xs },
+  nearest: {
+    gap: 2,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+  },
   crop: {
     width: 132,
     aspectRatio: CARD_ASPECT,

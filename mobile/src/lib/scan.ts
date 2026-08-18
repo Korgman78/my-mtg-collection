@@ -50,6 +50,20 @@ export async function hashPhoto(
   if (!saved.base64) throw new Error("L'image n'a pas pu être lue.");
 
   const { data, width, height } = decodePng(base64ToBytes(saved.base64));
+
+  // Trace de géométrie. Elle remonte dans le journal Metro, seul endroit
+  // d'où l'on peut observer ce qui se passe vraiment sur l'appareil.
+  // Ce qu'elle permet de trancher d'un coup d'œil :
+  //   - une image analysée en paysage (width > height) = orientation ratée ;
+  //   - un rapport largeur/hauteur loin de 0,716 = découpe fausse ;
+  //   - une découpe plus large que la zone visible = mauvais mapping.
+  console.log(
+    `[scan] photo=${photoWidth}x${photoHeight} apercu=${Math.round(previewWidth)}x${Math.round(
+      previewHeight
+    )} decoupe=${crop.width}x${crop.height}@(${crop.originX},${crop.originY}) ` +
+      `analyse=${width}x${height} rapport=${(width / height).toFixed(3)}`
+  );
+
   return { hashes: phashWindows(data, width, height), previewUri: saved.uri };
 }
 
@@ -71,14 +85,31 @@ export type ScanMatch = {
  *  différentes les plus proches (8 bits). Trancher seul produirait des
  *  ajouts silencieusement faux dans la collection — bien pire qu'un choix
  *  à confirmer. */
-export async function matchPhoto(hashes: string[]): Promise<ScanMatch[]> {
+export async function matchPhoto(hashes: string[], maxDistance = 14): Promise<ScanMatch[]> {
   const { data, error } = await supabase.rpc('match_card_hashes', {
     query_hashes: hashes,
-    max_distance: 14,
+    max_distance: maxDistance,
     max_results: 5,
   });
   if (error) throw new Error(error.message);
   return (data ?? []) as ScanMatch[];
+}
+
+/**
+ * Quand rien ne correspond sous le seuil, on redemande SANS seuil.
+ *
+ * C'est la mesure qui tranche, et elle vaut mieux que toutes les
+ * suppositions : la distance de la meilleure correspondance dit lequel des
+ * trois mondes on habite.
+ *
+ *   ≤ 14  la carte est reconnue, c'était le seuil qui bloquait ;
+ *   15–22 on regarde bien la bonne carte, mais dégradée : reflets, angle,
+ *         cadrage approximatif. C'est un problème de robustesse.
+ *   ≥ 25  on hache autre chose que la carte. Géométrie, orientation, ou
+ *         set absent de l'index. Aucun réglage de seuil n'y changera rien.
+ */
+export async function diagnoseScan(hashes: string[]): Promise<ScanMatch[]> {
+  return matchPhoto(hashes, 64);
 }
 
 /** Degré de confiance, pour le dire à l'écran plutôt que d'afficher « 6 ».
