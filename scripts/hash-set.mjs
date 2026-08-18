@@ -56,27 +56,37 @@ async function fetchJson(url) {
 
 /** Ce qu'on entend par « set principal » : les sorties qu'on drafte ou
  *  qu'on ouvre en booster. Sont exclus d'office les jetons, les promos, les
- *  memorabilia, les masterpieces — et Secret Lair, qui est de type `box`.
- *  Les decks Commander (`commander`) n'y sont pas non plus : ce sont des
- *  produits à part, à indexer à la demande. */
-const MAIN_SET_TYPES = new Set(['expansion', 'core', 'masters', 'draft_innovation']);
+ *  memorabilia, les masterpieces — et Secret Lair, qui est de type `box`. */
+const MAIN_SET_TYPES = ['expansion', 'core', 'masters', 'draft_innovation'];
 
-/** Les codes des sets principaux sortis depuis une date donnée. */
-async function mainSetCodes(since) {
+/** Les précons Commander, ajoutées par `--with-commander`. Elles méritent
+ *  d'être indexées : ce sont des cartes qu'on possède très souvent, et
+ *  certaines réimpressions n'existent nulle part ailleurs. */
+const COMMANDER_SET_TYPE = 'commander';
+
+/** Les codes des sets retenus, sortis depuis une date donnée. */
+async function mainSetCodes(since, types) {
   const all = await fetchJson('https://api.scryfall.com/sets');
   const today = new Date().toISOString().slice(0, 10);
+  const wanted = new Set(types);
 
   return all.data
     .filter(
       (s) =>
         !s.digital &&
-        MAIN_SET_TYPES.has(s.set_type) &&
+        wanted.has(s.set_type) &&
         s.released_at &&
         s.released_at >= since &&
         s.released_at <= today
     )
     .sort((a, b) => a.released_at.localeCompare(b.released_at))
-    .map((s) => ({ code: s.code, name: s.name, count: s.card_count, date: s.released_at }));
+    .map((s) => ({
+      code: s.code,
+      name: s.name,
+      count: s.card_count,
+      date: s.released_at,
+      type: s.set_type,
+    }));
 }
 
 /** Toutes les impressions d'un set, variantes comprises. */
@@ -263,12 +273,18 @@ async function main() {
     .map((c) => c.toLowerCase());
 
   if (args.includes('--main-sets')) {
-    const sets = await mainSetCodes(since);
-    console.log(`Sets principaux depuis ${since} :\n`);
+    const types = [...MAIN_SET_TYPES];
+    if (args.includes('--with-commander')) types.push(COMMANDER_SET_TYPE);
+
+    const sets = await mainSetCodes(since, types);
+    console.log(`Sets depuis ${since} (${types.join(', ')}) :\n`);
     let total = 0;
     for (const s of sets) {
       total += s.count;
-      console.log(`  ${s.date}  ${s.code.toUpperCase().padEnd(5)} ${String(s.count).padStart(4)}  ${s.name}`);
+      const tag = s.type === COMMANDER_SET_TYPE ? ' [commander]' : '';
+      console.log(
+        `  ${s.date}  ${s.code.toUpperCase().padEnd(5)} ${String(s.count).padStart(4)}  ${s.name}${tag}`
+      );
     }
     // 0,21 s par carte, mesuré. Autant l'annoncer avant, pas après.
     console.log(`\n${sets.length} sets, ${total} cartes, ~${Math.round((total * 0.21) / 60)} min.\n`);

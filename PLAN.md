@@ -78,10 +78,11 @@ dans `master`. Trois choses à faire, dans cet ordre.
 #    dans le SQL editor Supabase.
 
 # b. Voir ce qui sera indexé, sans rien lancer :
-node scripts/hash-set.mjs --main-sets --list
+node scripts/hash-set.mjs --main-sets --with-commander --list
 
-# c. Indexer. 15 sets, 6993 cartes, ~24 min.
-DATABASE_URL="postgres://…" node scripts/hash-set.mjs --main-sets
+# c. Indexer. 24 sets, 10 111 cartes, ~35 min.
+#    DATABASE_URL vit dans un .env à la racine (ignoré par git).
+node --env-file=.env scripts/hash-set.mjs --main-sets --with-commander
 ```
 
 Ensuite, un set à la demande : `node scripts/hash-set.mjs otj mh3` (~1 min 30

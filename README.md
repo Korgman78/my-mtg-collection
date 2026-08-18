@@ -57,9 +57,16 @@ une fois, elle sert à tous les appareils.** Un set non indexé ne peut pas êtr
 reconnu — c'est la seule limite.
 
 1. Applique la migration `supabase/migrations/20260818120000_card_hashes.sql`.
-2. Indexe les sets principaux des deux dernières années (~7 000 cartes, ~24 min) :
-   - depuis GitHub : workflow **Index set for scanner**, entrée `--main-sets` ;
-   - en local, avec `DATABASE_URL` : `node scripts/hash-set.mjs --main-sets`.
+2. Indexe les sets des deux dernières années. En local, mets `DATABASE_URL`
+   dans un `.env` à la racine (ignoré par git) et laisse Node le lire :
+   ```sh
+   node --env-file=.env scripts/hash-set.mjs --main-sets --with-commander
+   ```
+   Sans `--with-commander` : 15 sets draftables, 6993 cartes, ~24 min.
+   Avec : 24 sets, 10 111 cartes, ~35 min — les précons Commander sont des
+   cartes qu'on possède souvent et dont certaines réimpressions n'existent
+   nulle part ailleurs.
+   Depuis GitHub : workflow **Index set for scanner**, même chaîne en entrée.
 3. Ensuite, au besoin, un set à la fois : `node scripts/hash-set.mjs otj mh3`
    (~1 min 30 par set). Voir la liste sans rien lancer : `--main-sets --list`,
    et remonter plus loin : `--main-sets --since 2020-01-01`.
