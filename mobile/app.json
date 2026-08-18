@@ -32,7 +32,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Grimoire utilise l'appareil photo pour reconnaître tes cartes. La photo ne quitte pas le téléphone : seule son empreinte est envoyée."
+          "cameraPermission": "Grimoire utilise l'appareil photo pour reconnaître tes cartes. La photo ne quitte pas le téléphone : seule son empreinte est envoyée.",
+          "recordAudioAndroid": false
         }
       ],
       [
@@ -49,6 +50,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "25436a8c-bfd1-4129-8c55-0e0cd4322159"
+      }
+    },
+    "owner": "korgman"
   }
 }
