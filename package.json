@@ -11,7 +11,12 @@
     "backfill": "node scripts/backfill.mjs"
   },
   "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "pako": "^3.0.1",
     "pg": "^8.13.1",
     "stream-json": "^1.9.1"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0"
   }
 }

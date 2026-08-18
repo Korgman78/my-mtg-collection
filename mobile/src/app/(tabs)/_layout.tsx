@@ -3,7 +3,7 @@
 // Pourquoi des onglets : les alertes vivaient derrière une icône muette dans
 // un coin de l'en-tête, et personne ne les trouvait. Une destination visible
 // en permanence règle le problème une fois pour toutes. L'emplacement du
-// milieu est réservé au scanner (phase 3).
+// milieu, réservé de longue date, est occupé par le scanner depuis la phase 3.
 //
 // SDK 56 : `import { Tabs } from 'expo-router'` est déprécié, l'entrée
 // non dépréciée est `expo-router/js-tabs`.
@@ -26,7 +26,7 @@ export default function TabsLayout() {
         tabBarStyle: styles.bar,
         tabBarItemStyle: styles.item,
         tabBarLabelStyle: styles.label,
-        tabBarActiveTintColor: Colors.text,
+        tabBarActiveTintColor: Colors.accent,
         tabBarInactiveTintColor: Colors.textTertiary,
         tabBarBadgeStyle: styles.badge,
       }}>
@@ -35,6 +35,13 @@ export default function TabsLayout() {
         options={{
           title: 'Collection',
           tabBarIcon: ({ color }) => <Icon name="layers" size={21} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="scan"
+        options={{
+          title: 'Scanner',
+          tabBarIcon: ({ color }) => <Icon name="card" size={21} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -53,7 +60,7 @@ const styles = StyleSheet.create({
   bar: {
     backgroundColor: Colors.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: Colors.rule,
     height: 62,
     paddingTop: Space.sm,
     paddingBottom: Space.sm,

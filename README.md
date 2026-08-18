@@ -49,12 +49,37 @@ Ensuite le job tourne tout seul chaque nuit à 04:30 UTC.
 4. Scanne le QR code avec l'app **Expo Go** (iOS/Android), ou tape `w` pour
    ouvrir la version web.
 
+## Activer le scanner
+
+Le scanner reconnaît une carte en comparant l'empreinte perceptuelle de la
+photo à une base de référence. Cette base se construit **set par set** : tant
+qu'un set n'est pas indexé, le scanner ne peut rien y reconnaître.
+
+1. Applique la migration `supabase/migrations/20260818120000_card_hashes.sql`.
+2. Lance le workflow **Index set for scanner** (onglet Actions → Run workflow)
+   en donnant les codes voulus, séparés par des espaces : `otj mh3 blb`.
+   Compte environ 2 s par carte, soit ~12 min pour un set standard.
+3. En local, si tu as `DATABASE_URL` :
+   `node scripts/hash-set.mjs otj` (ajoute `--dry-run` pour n'écrire nulle part).
+
+Le calcul du hachage se fait sur le téléphone : la photo ne quitte jamais
+l'appareil, seules 25 empreintes de 64 bits partent vers la base.
+
+> ⚠️ `mobile/src/lib/phash.ts` est importé à la fois par l'app et par le job
+> d'indexation. Le modifier rend incomparables tous les hachages déjà stockés
+> et impose de réindexer chaque set. `scripts/phash-selftest.mjs` fige son
+> comportement, et le workflow refuse d'écrire si le test ne passe plus.
+
 ## Scripts
 
 | Commande | Rôle |
 |---|---|
 | `npm run ingest` | Ingestion du jour (fait par l'Action ; utilisable en local avec `DATABASE_URL`) |
 | `npm run backfill` | Rejoue les archives pour combler l'historique des cartes suivies |
+| `node scripts/hash-set.mjs <set…>` | Indexe un ou plusieurs sets pour le scanner |
+| `node scripts/phash-selftest.mjs` | Fige le pHash sur un vecteur de référence |
+| `node scripts/png-selftest.mjs` | Vérifie le décodeur PNG contre un vrai encodeur |
+| `node scripts/scan-e2e.mjs [set] [n]` | Mesure la reconnaissance de bout en bout |
 
 ## Modèle de données (résumé)
 
@@ -66,6 +91,8 @@ Ensuite le job tourne tout seul chaque nuit à 04:30 UTC.
 | `price_snapshots` | 1 prix par carte suivie et par jour |
 | `collection_value_snapshots` | Valeur quotidienne de chaque folder (graphe portfolio) |
 | `card_price_stats` (vue) | Moyenne 30 j, couloir P10–P90, variations 7 j / 30 j |
+| `card_hashes` | Empreintes perceptuelles du scanner — sans FK vers `cards`, on doit pouvoir reconnaître une carte non possédée |
+| `hashed_sets` | Sets déjà indexés, c'est-à-dire ce que le scanner sait reconnaître |
 
 ## Roadmap
 

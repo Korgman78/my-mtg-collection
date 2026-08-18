@@ -1,0 +1,49 @@
+name: Index set for scanner
+
+# Construit la base de référence perceptuelle d'un ou plusieurs sets.
+# Déclenchement manuel : on indexe les sets dont on a besoin, quand on en a
+# besoin, plutôt que d'entretenir un index de 100 000 cartes.
+#
+# Durée indicative : ~2 s par carte (téléchargement de l'image + politesse
+# envers Scryfall), soit environ 12 min pour un set standard de 350 cartes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sets:
+        description: 'Codes de set séparés par des espaces (ex : otj mh3 blb)'
+        required: true
+        type: string
+
+concurrency:
+  group: hash-set
+  cancel-in-progress: false
+
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 : le job importe directement mobile/src/lib/phash.ts grâce au
+      # strip-types natif. C'est ce qui garantit que la référence et l'app
+      # calculent le même hachage — pas deux implémentations « équivalentes ».
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Le pHash est le contrat entre ce job et l'app : s'il a bougé, les
+      # hachages déjà en base deviennent incomparables. On refuse d'écrire.
+      - name: Vérifier le pHash et le décodeur PNG
+        run: |
+          node scripts/phash-selftest.mjs
+          node scripts/png-selftest.mjs
+
+      - name: Indexer les sets
+        run: node scripts/hash-set.mjs ${{ inputs.sets }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

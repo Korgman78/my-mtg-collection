@@ -48,8 +48,15 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   aux actions, jeu d'icônes SVG maison en remplacement des emoji, système
   de primitives dans `ui.tsx`, barre d'onglets Collection / Alertes.
   Actions cachées derrière un appui long rendues explicites.
-- [ ] **Phase 3 — Scanner v1**
-  Photo → rectification → reconnaissance pHash côté serveur → confirmation.
+- [x] **Phase 3 — Scanner v1** *(code livré 2026-08-18)*
+  Photo → découpe du cadre → pHash **calculé sur le téléphone** → distance de
+  Hamming en SQL → candidats classés → confirmation → ajout.
+  Écart assumé avec le plan initial : le hachage se fait sur l'appareil et non
+  sur le serveur. On n'envoie que 25 × 64 bits au lieu d'une photo, donc pas
+  de Storage ni d'Edge Function — et c'est déjà la brique de la phase 4.
+  Base de référence construite **set par set** (`Index set for scanner`).
+  **Reste manuel** : appliquer la migration `20260818120000_card_hashes.sql`,
+  puis lancer le job sur les sets voulus. Sans ça le scanner ne reconnaît rien.
 - [ ] **Phase 4 — Scanner temps réel on-device**
   vision-camera + détection contour + pHash/embeddings locaux + vote
   multi-frames + mode rafale.
@@ -71,8 +78,32 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 - [ ] « Confirm email » désactivé dans Supabase Auth (`mailer_autoconfirm`
       était encore à `false` le 2026-08-18)
 - [ ] Secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM` (pour le digest email)
+- [ ] Migration `20260818120000_card_hashes.sql` appliquée (scanner)
+- [ ] Au moins un set indexé via le workflow *Index set for scanner*
+      (sans ça, le scanner ne peut rien reconnaître)
 
 ## Notes techniques à retenir
+
+- **Le pHash est un contrat.** `mobile/src/lib/phash.ts` est importé tel quel
+  par l'app ET par le job d'indexation (strip-types natif de Node ≥ 22). Le
+  modifier rend incomparables tous les hachages déjà en base : il faudrait
+  réindexer chaque set. `scripts/phash-selftest.mjs` fige un vecteur de
+  référence et le job refuse d'écrire s'il ne passe plus.
+- **Ce qui fait ou défait un scan, c'est le cadrage** — pas la lumière.
+  Mesuré sur 60 cartes : pénombre et surexposition restent à 60/60, tandis
+  qu'une photo laissant 10 % de fond autour de la carte tombe à 31/60 avec un
+  seul hachage. D'où les 25 fenêtres d'interrogation (5 échelles × 5 centres)
+  qui ramènent à 60/60. De bout en bout (`scripts/scan-e2e.mjs`) : 93 % dans
+  le pire cas testé, 100 % bien cadré.
+- **Le scanner ne tranche jamais seul.** Les bonnes réponses vont jusqu'à
+  ~12 bits de distance, et les deux cartes différentes les plus proches d'un
+  set sont à 8 bits : les plages se recouvrent. L'app propose donc des
+  candidats classés avec leur illustration.
+- **Scryfall refuse les User-Agent par défaut** (`400 generic_user_agent`).
+  Le client mobile en pose un en natif ; sur le web c'est un en-tête interdit,
+  le navigateur envoie le sien.
+- **`Alert.alert` n'existe pas sur react-native-web** (`static alert() {}`) :
+  toute confirmation passe par `ConfirmDialog` dans `ui.tsx`.
 
 - **Expo SDK 56** : expo-router est indépendant de React Navigation,
   structure `src/app/`, vérifier la doc v56 avant d'utiliser une API.
@@ -87,6 +118,20 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 ## Journal
 
+- **2026-08-18 (suite)** — Trois chantiers. **Corrections** : les trois boutons
+  de suppression ne faisaient rien sur le web (`Alert.alert` y est une méthode
+  vide) → primitive `ConfirmDialog` ; `<button>` imbriqué dans la ligne de
+  dossier → deux zones sœurs. **Refonte grimoire** : encre chaude, parchemin,
+  or vieilli, équerres d'angle, rubriques gravées — typographie système
+  inchangée. **Bulk de set** : bouton dans un dossier, ajoute une copie de
+  chaque commune et peu commune (hors terrains de base), dédoublonné.
+  **Phase 3 scanner** livrée (voir ci-dessus). Découverte en passant :
+  Scryfall rejette les User-Agent par défaut, la recherche de cartes était
+  donc probablement déjà cassée en natif.
+  **Non vérifié** : rien n'a été éprouvé à l'écran ni en base — l'extension
+  Chrome n'était pas connectée et tout demande d'être authentifié.
+  Prochaine étape : appliquer la migration, indexer un set, scanner pour de
+  vrai depuis Expo Go.
 - **2026-08-18** — Phase 2 commitée (elle dormait en working tree depuis
   trois semaines) sur la branche `phase-2-alerts`, puis refonte UI complète.
   Vérifications faites en séance : les 3 migrations SQL sont bien appliquées,
