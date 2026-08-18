@@ -138,8 +138,9 @@ export default function AlertsScreen() {
         loading={deleteRule.isPending}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
-          if (!pendingDelete) return;
-          deleteRule.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
+          const id = pendingDelete?.id;
+          if (!id) return;
+          deleteRule.mutate(id, { onSettled: () => setPendingDelete(null) });
         }}
       />
     </Screen>

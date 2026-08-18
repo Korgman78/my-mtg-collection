@@ -168,8 +168,9 @@ export default function CardScreen() {
         loading={deleteItem.isPending}
         onCancel={() => setRemoving(false)}
         onConfirm={() => {
-          if (!item) return;
-          deleteItem.mutate(item.id, {
+          const id = item?.id;
+          if (!id) return;
+          deleteItem.mutate(id, {
             onSuccess: () => router.back(),
             onSettled: () => setRemoving(false),
           });

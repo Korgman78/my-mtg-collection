@@ -138,7 +138,12 @@ function SetBulkSheet({
 
   const set = lookup.data?.set ?? null;
   const count = lookup.data?.count ?? 0;
-  const ready = !!set && count > 0 && !addBulk.isPending;
+  // Le code est extrait ici, pas dans `submit`. Le React Compiler remonte
+  // les littéraux d'objet hors des callbacks pour les mémoïser : un
+  // `set!.code` à l'intérieur serait évalué dès le rendu, alors que `set`
+  // est nul tant que Scryfall n'a pas répondu.
+  const resolvedCode = set?.code ?? null;
+  const ready = !!resolvedCode && count > 0 && !addBulk.isPending;
 
   function close() {
     setCode('');
@@ -149,9 +154,10 @@ function SetBulkSheet({
   }
 
   function submit() {
+    if (!resolvedCode) return;
     setDone(null);
     addBulk.mutate(
-      { folderId, setCode: set!.code, onProgress: setPhase },
+      { folderId, setCode: resolvedCode, onProgress: setPhase },
       {
         onSuccess: (result) => setDone(result),
         onSettled: () => setPhase(null),

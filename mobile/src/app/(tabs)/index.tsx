@@ -109,8 +109,11 @@ export default function DashboardScreen() {
         loading={deleteFolder.isPending}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
-          if (!pendingDelete) return;
-          deleteFolder.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
+          // `?.` et non `pendingDelete.id` : le React Compiler évalue les
+          // accès mémoïsables dès le rendu, où la valeur est encore nulle.
+          const id = pendingDelete?.id;
+          if (!id) return;
+          deleteFolder.mutate(id, { onSettled: () => setPendingDelete(null) });
         }}
       />
     </Screen>
