@@ -7,6 +7,7 @@ node_modules/
 # QR de développement : encode l'IP locale de la machine, donc périmé
 # ailleurs et à chaque changement de réseau. Se régénère avec `npm run qr`.
 expo-go-*.png
+grimoire-*.png
 
 # Verrou npm de l'app mobile : genere sous Windows, il decrit un arbre que
 # npm ne reconstruit pas a l'identique sous Linux (hoisting des dependances

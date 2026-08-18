@@ -1,7 +1,7 @@
 # Grimoire — Plan & état d'avancement
 
 > Document vivant : mis à jour à chaque session de travail.
-> Dernière mise à jour : **2026-08-18**
+> Dernière mise à jour : **2026-08-19**
 
 ## Vision
 
@@ -15,13 +15,13 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 | Brique | Choix | Note |
 |---|---|---|
-| App mobile | Expo SDK 56 / React Native, expo-router | `mobile/` — app nommée **Grimoire**, thème sombre bleu nuit + or |
+| App mobile | Expo **SDK 54** / React Native 0.81, expo-router 6 | `mobile/` — app nommée **Grimoire**, thème grimoire : encre chaude, parchemin, or vieilli |
 | Backend | Supabase (Postgres, Auth, RLS) | projet `lrpyrbhemwutvfkwpgah` |
 | Données cartes & prix | Scryfall (bulk quotidien + API autocomplete) | EUR Cardmarket / USD TCGplayer ; attribution obligatoire |
 | Historique prix | Construit par nous (Scryfall n'en fournit pas) | snapshots en base pour les cartes suivies + archives complètes dans `archives/` |
 | Ingestion | GitHub Actions, cron 04:30 UTC | `.github/workflows/daily-prices.yml` |
 | Emails | Resend (phase 2) | digest hebdo |
-| Push | Expo Notifications (nécessite un dev build, pas Expo Go) | reporté après phase 2 |
+| Push | Expo Notifications | **débloqué** : l'app a un build natif depuis le 2026-08-19 |
 
 ## Phases
 
@@ -57,8 +57,21 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   Base de référence dans Supabase : **construite une fois, elle sert à tous
   les appareils** (ni par machine, ni par téléphone). Job reprenable, il saute
   ce qui est déjà indexé. Débit mesuré : 0,21 s/carte.
-  **Reste manuel** : voir « Reprendre ici » ci-dessous.
-  **Jamais éprouvé sur un vrai téléphone** — voir les réserves plus bas.
+  **Éprouvé sur S24 Ultra le 2026-08-19 : reconnaissance quasi systématique.**
+  Deux corrections décisives après les premiers essais, tous deux invisibles
+  en simulation :
+  — la géométrie (orientation Android non appliquée, et découpe faite sur la
+  photo entière au lieu de la zone réellement cadrée) ;
+  — le descripteur : hacher la carte entière ne discrimine pas assez, toutes
+  les cartes partageant la même charpente. Deux cartes différentes pouvaient
+  n'être qu'à 10 bits, quand une photo à main levée en dégrade 14. **Seule
+  l'illustration est hachée désormais** (paire la plus proche à 16 bits).
+  Détection de carte ajoutée **en complément** du balayage de fenêtres.
+  Index : 15 995 empreintes, 39 sets.
+- [x] **Phase 3.5 — Publication** *(2026-08-19)*
+  APK installable produit par EAS, `com.korgman.grimoire`. Six tentatives :
+  verrou npm généré sous Windows inutilisable sous Linux (retiré du dépôt),
+  puis deux contraintes de version Node. L'app ne dépend plus d'Expo Go.
 - [ ] **Phase 4 — Scanner temps réel on-device**
   vision-camera + détection contour + pHash/embeddings locaux + vote
   multi-frames + mode rafale.
@@ -66,69 +79,66 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   Import/export CSV (Dragon Shield, Moxfield), top movers sur le dashboard,
   prix d'achat éditable, push notifications (dev build), onboarding, animations.
 
-## Reprendre ici — session du 2026-08-18
+## Reprendre ici — au 2026-08-19
 
-Tout le code est poussé sur `phase-2-alerts` (5 commits). Rien n'a été fusionné
-dans `master`. Trois choses à faire, dans cet ordre.
+L'app tourne **en vrai** sur un S24 Ultra, installée depuis un APK. Le scanner
+reconnaît les cartes. Tout est poussé sur `phase-2-alerts`.
 
-### 1. Rendre le scanner utilisable (~30 min, une seule fois)
+### À corriger en premier — bug d'affichage connu
 
-```sh
-# a. Coller supabase/migrations/20260818120000_card_hashes.sql
-#    dans le SQL editor Supabase.
+**La barre d'onglets passe sous la barre de navigation Android** (les boutons
+`III O <`). Cause identifiée, correctif non appliqué : `(tabs)/_layout.tsx`
+impose `height: 62` en dur dans `tabBarStyle`, ce qui écrase le calcul de zone
+sûre de React Navigation. Il faut ajouter l'inset bas :
 
-# b. Voir ce qui sera indexé, sans rien lancer :
-node scripts/hash-set.mjs --main-sets --with-commander --list
-
-# c. Indexer. 24 sets, 10 111 cartes, ~35 min.
-#    DATABASE_URL vit dans un .env à la racine (ignoré par git).
-node --env-file=.env scripts/hash-set.mjs --main-sets --with-commander
+```ts
+const insets = useSafeAreaInsets();       // react-native-safe-area-context
+// tabBarStyle: [styles.bar, { height: 62 + insets.bottom,
+//                             paddingBottom: Space.sm + insets.bottom }]
 ```
 
-Ensuite, un set à la demande : `node scripts/hash-set.mjs otj mh3` (~1 min 30
-par set). Le job est reprenable : l'interrompre ne coûte rien.
+À vérifier au passage sur `add-card.tsx`, dont le bloc d'actions est en
+`marginTop: 'auto'` sans écran d'onglets pour le protéger.
 
-Les « sets principaux » = les sorties draftables des deux dernières années
-(`expansion`, `core`, `masters`, `draft_innovation`). Secret Lair, jetons,
-promos, memorabilia et masterpieces sont écartés par leur type.
+### Deux choses en attente, côté toi
 
-**Question laissée en suspens** : faut-il aussi indexer les 9 decks Commander
-sortis sur la période (3118 cartes, +11 min) ? Ce sont des cartes qu'on
-possède souvent. Il suffit de passer leurs codes au script.
+1. **Le workflow *Daily price ingestion* n'a pas encore été lancé.** Le secret
+   `DATABASE_URL` est configuré, mais le run reste à déclencher (Actions →
+   Run workflow) pour confirmer qu'il passe au vert. Sans lui, aucun
+   historique de prix ne se construit — donc pas de tendances ni d'alertes.
+2. **`master` est resté à la phase 1.** La branche `phase-2-alerts` porte tout
+   le reste. Tant qu'elle n'est pas fusionnée, le workflow *Index set for
+   scanner* n'apparaît pas dans l'onglet Actions (GitHub ne propose
+   « Run workflow » que depuis la branche par défaut).
 
-### 2. Éprouver pour de vrai (rien ne l'a été)
+### Reconstruire l'app après un changement
 
-Aucun écran n'a été vu à l'écran cette session — l'extension Chrome n'était
-pas connectée, et tout le reste demande d'être authentifié. À vérifier :
+L'APK ne se met plus à jour tout seul :
 
-- se connecter et parcourir la refonte grimoire ;
-- supprimer un dossier, une règle, une carte (c'est ce qui était cassé) ;
-- ajouter le bulk d'un set dans un dossier ;
-- **scanner une vraie carte depuis Expo Go**.
+```sh
+cd mobile && npm run build:apk     # ~20 min, puis QR d'installation
+npm run qr                         # QR du serveur de dev, si besoin d'Expo Go
+```
 
-Si le scan ne reconnaît rien alors que le set est bien indexé, le premier
-endroit où regarder est la correspondance entre le repère affiché
-(`scan.tsx`, `styles.frame`, 82 % de largeur) et la découpe appliquée à la
-photo (`card-frame.ts`, `frameRect`). Les 25 fenêtres sont là pour absorber
-l'écart, mais ça n'a jamais été confronté à une vraie caméra.
+Pour éviter un build à chaque retouche, la piste est `expo-updates` : mises à
+jour du JavaScript à distance, sans repasser par un APK.
 
-### 3. Fusionner dans `master`
+### Prochain gain sur le scanner
 
-`master` est resté à la phase 1. La branche `phase-2-alerts` porte désormais
-les phases 2, 2.5 et 3. Deux conséquences tant qu'on ne fusionne pas :
+Mesuré, chiffré, prêt à faire : un **ajustement de droites sur les quatre
+bords** de la carte. La détection actuelle trouve la carte 25 fois sur 25 mais
+la délimite mal (extrêmes de diagonale, sensibles à un pixel aberrant).
 
-- le workflow *Index set for scanner* **n'apparaîtra pas** dans l'onglet
-  Actions : GitHub ne propose « Run workflow » que depuis la branche par
-  défaut. En local, le script fonctionne quand même.
-- le secret GitHub `DATABASE_URL` n'est toujours pas configuré, ce qui bloque
-  aussi l'ingestion quotidienne des prix depuis juin.
+Ça débloquerait deux choses d'un coup :
+- le reste du levier « détection » — 21/25 aujourd'hui contre 25/25 avec une
+  détection parfaite ;
+- **l'illustration en 2×2**, prête mais inutilisable en l'état : 8-16/25 avec
+  la détection actuelle, 25/25 avec une détection parfaite. Elle porterait la
+  marge de 25 % à 38 % des bits, ce qui deviendra nécessaire quand l'index
+  passera de 16 000 à 100 000 cartes.
 
-### Écart connu avec Dragon Shield
-
-Ce qu'on a : on vise une carte, on appuie, l'app propose la bonne à confirmer.
-Ce qu'on n'a pas : le scan continu en rafale, où les cartes défilent sans
-qu'on appuie. C'est la phase 4, et elle demande un development build — Expo Go
-ne suffira pas.
+`scripts/phash-eval-next.mjs` compare les stratégies ; `scripts/scan-smoke.mjs`
+teste contre la vraie base.
 
 ## Checklist de mise en route (étapes manuelles)
 
@@ -137,16 +147,16 @@ ne suffira pas.
 - [x] Projet Supabase créé (ancien projet mis en pause)
 - [x] Migrations SQL appliquées — **les 3 sont passées**, vérifié le 2026-08-18
       en interrogeant les tables via l'API REST
-- [ ] Secret GitHub `DATABASE_URL` configuré (string **Session pooler**)
+- [x] Secret GitHub `DATABASE_URL` configuré (string **Session pooler**)
 - [ ] Premier run du workflow *Daily price ingestion* vérifié (vert + archive committée)
 - [x] `mobile/.env` rempli (clé anon Supabase) — corrigé le 2026-08-18,
       le fichier contenait encore `placeholder-…` d'où un `Invalid API key`
 - [ ] « Confirm email » désactivé dans Supabase Auth (`mailer_autoconfirm`
       était encore à `false` le 2026-08-18)
 - [ ] Secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM` (pour le digest email)
-- [ ] Migration `20260818120000_card_hashes.sql` appliquée (scanner)
-- [ ] Sets principaux indexés (`hash-set.mjs --main-sets`, ~24 min, une fois)
-- [ ] Un vrai scan réussi depuis Expo Go
+- [x] Migration `20260818120000_card_hashes.sql` appliquée (scanner)
+- [x] Sets principaux indexés — 39 sets, 15 995 empreintes
+- [x] Un vrai scan réussi (APK sur S24 Ultra)
 - [ ] `phase-2-alerts` fusionnée dans `master`
 
 ## Notes techniques à retenir
@@ -184,6 +194,22 @@ ne suffira pas.
   attendront un development build ; en attendant, alertes in-app + email.
 
 ## Journal
+
+- **2026-08-19** — Le scanner marche pour de vrai, sur un vrai téléphone.
+  Deux causes profondes trouvées et corrigées, aucune visible en simulation :
+  la géométrie (orientation Android, découpe hors du cadre visé) puis le
+  descripteur — hacher la carte entière ne discrimine pas assez, seules les
+  illustrations le font. Détection de carte ajoutée en complément.
+  Ajouts du jour : onglet Tendances (hausses/baisses 3 j / 7 j / 1 mois, en %
+  ou en €), filtre de rareté sur les alertes, tri des dossiers, exemplaires
+  cumulés et éditables, vue liste, déclencheur silencieux.
+  Deux pannes de fond réparées : Scryfall a changé le format de ses exports
+  (l’ingestion nocturne aurait échoué même une fois le secret posé), et le
+  verrou npm généré sous Windows rendait tout build EAS impossible.
+  Enfin : APK installé sur S24 Ultra, l’app ne dépend plus d’Expo Go.
+  **Leçon de la journée** : trois pannes ont été diagnostiquées en lisant un
+  journal (Metro, puis les logs de build EAS) après avoir perdu du temps à
+  supposer. Lire le log d’abord.
 
 - **2026-08-18 (suite)** — Trois chantiers. **Corrections** : les trois boutons
   de suppression ne faisaient rien sur le web (`Alert.alert` y est une méthode
