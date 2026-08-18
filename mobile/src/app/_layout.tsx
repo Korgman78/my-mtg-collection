@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
-import { DarkTheme, Stack, ThemeProvider, useRouter, useSegments } from 'expo-router';
+// SDK 54 : expo-router ne réexporte pas le thème de navigation, il vient
+// directement de React Navigation. (Le réexport arrive avec le SDK 56.)
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, type ReactNode } from 'react';
 

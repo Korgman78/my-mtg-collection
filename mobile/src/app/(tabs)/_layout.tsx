@@ -5,10 +5,11 @@
 // en permanence règle le problème une fois pour toutes. L'emplacement du
 // milieu, réservé de longue date, est occupé par le scanner depuis la phase 3.
 //
-// SDK 56 : `import { Tabs } from 'expo-router'` est déprécié, l'entrée
-// non dépréciée est `expo-router/js-tabs`.
+// SDK 54 : `expo-router/js-tabs` n'existe pas encore (il arrive en 56),
+// l'entrée correcte est `expo-router`. À reprendre le jour où le projet
+// remontera de SDK — c'est le seul fichier concerné.
 
-import { Tabs } from 'expo-router/js-tabs';
+import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { Icon } from '@/components/icons';
