@@ -98,6 +98,53 @@ export function useFolder(folderId: string) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Tendances de prix                                                           */
+/* -------------------------------------------------------------------------- */
+
+export type MoverWindow = 3 | 7 | 30;
+export type MoverOrder = 'pct' | 'eur';
+
+export type PriceMover = {
+  card_id: string;
+  name: string;
+  set_code: string;
+  collector_number: string;
+  rarity: string | null;
+  image_small: string | null;
+  finish: Finish;
+  quantity: number;
+  price_now: number;
+  price_then: number;
+  change_pct: number;
+  change_eur: number;
+};
+
+/** Les plus fortes hausses ou baisses de la collection.
+ *
+ *  Le classement est fait en base : une collection qui a reçu deux blocs de
+ *  set dépasse le millier de lignes, et rapatrier tout ça pour n'en afficher
+ *  que douze serait absurde. */
+export function usePriceMovers(
+  windowDays: MoverWindow,
+  order: MoverOrder,
+  direction: 'up' | 'down'
+) {
+  return useQuery({
+    queryKey: ['collection', 'movers', windowDays, order, direction],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('collection_price_movers', {
+        window_days: windowDays,
+        order_by: order,
+        direction,
+        max_results: 12,
+      });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as PriceMover[];
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 /* Tri d'un dossier                                                            */
 /* -------------------------------------------------------------------------- */
 
