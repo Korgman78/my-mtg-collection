@@ -10,9 +10,16 @@
 // de set de l'app : un showcase a une autre illustration, donc un autre
 // hachage, et doit être reconnaissable pour lui-même.
 //
+// Le job est REPRENABLE : les cartes déjà indexées sont sautées. On peut
+// donc l'interrompre, le relancer, ou le reprendre depuis une autre machine
+// — la référence vit dans Supabase, pas en local.
+//
 // Usage :
-//   DATABASE_URL=postgres://... node scripts/hash-set.mjs otj mh3
-//   DATABASE_URL=postgres://... node scripts/hash-set.mjs --dry-run otj
+//   DATABASE_URL=... node scripts/hash-set.mjs otj mh3      un ou plusieurs sets
+//   DATABASE_URL=... node scripts/hash-set.mjs --main-sets  les sets principaux récents
+//   DATABASE_URL=... node scripts/hash-set.mjs --main-sets --since 2020-01-01
+//   node scripts/hash-set.mjs --dry-run otj                 n'écrit rien
+//   node scripts/hash-set.mjs --main-sets --list            affiche la liste et sort
 
 import jpeg from 'jpeg-js';
 import pg from 'pg';
@@ -45,6 +52,31 @@ async function fetchJson(url) {
   const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) throw new Error(`Scryfall ${res.status} sur ${url}`);
   return res.json();
+}
+
+/** Ce qu'on entend par « set principal » : les sorties qu'on drafte ou
+ *  qu'on ouvre en booster. Sont exclus d'office les jetons, les promos, les
+ *  memorabilia, les masterpieces — et Secret Lair, qui est de type `box`.
+ *  Les decks Commander (`commander`) n'y sont pas non plus : ce sont des
+ *  produits à part, à indexer à la demande. */
+const MAIN_SET_TYPES = new Set(['expansion', 'core', 'masters', 'draft_innovation']);
+
+/** Les codes des sets principaux sortis depuis une date donnée. */
+async function mainSetCodes(since) {
+  const all = await fetchJson('https://api.scryfall.com/sets');
+  const today = new Date().toISOString().slice(0, 10);
+
+  return all.data
+    .filter(
+      (s) =>
+        !s.digital &&
+        MAIN_SET_TYPES.has(s.set_type) &&
+        s.released_at &&
+        s.released_at >= since &&
+        s.released_at <= today
+    )
+    .sort((a, b) => a.released_at.localeCompare(b.released_at))
+    .map((s) => ({ code: s.code, name: s.name, count: s.card_count, date: s.released_at }));
 }
 
 /** Toutes les impressions d'un set, variantes comprises. */
@@ -99,8 +131,30 @@ async function hashSet(db, setCode, dryRun) {
   const set = await fetchJson(`https://api.scryfall.com/sets/${setCode}`);
   console.log(`\n${set.code.toUpperCase()} — ${set.name} (${set.card_count} cartes annoncées)`);
 
-  const cards = await fetchSetPrintings(set.code);
-  console.log(`  ${cards.length} impressions papier à hacher`);
+  const all = await fetchSetPrintings(set.code);
+
+  // Reprise : ce qui est déjà en base ne se re-télécharge pas. C'est ce qui
+  // rend le job interruptible, et une relance après ajout d'un set coûte
+  // quelques secondes au lieu de tout recommencer.
+  let done = new Set();
+  if (db) {
+    const { rows: existing } = await db.query(
+      'select card_id from card_hashes where set_code = $1',
+      [set.code]
+    );
+    done = new Set(existing.map((r) => r.card_id));
+  }
+  const cards = all.filter((c) => !done.has(c.id));
+
+  if (done.size > 0) {
+    console.log(`  ${all.length} impressions, ${done.size} déjà indexées → ${cards.length} à faire`);
+  } else {
+    console.log(`  ${cards.length} impressions papier à hacher`);
+  }
+  if (cards.length === 0) {
+    console.log('  rien à faire.');
+    return;
+  }
 
   const rows = [];
   let skipped = 0;
@@ -186,13 +240,47 @@ async function hashSet(db, setCode, dryRun) {
   console.log(`  écrit en base.`);
 }
 
+/** Deux ans en arrière, par défaut. */
+function twoYearsAgo() {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 2);
+  return d.toISOString().slice(0, 10);
+}
+
+function flagValue(args, name, fallback) {
+  const i = args.indexOf(name);
+  return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : fallback;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
-  const codes = args.filter((a) => !a.startsWith('--')).map((c) => c.toLowerCase());
+  const listOnly = args.includes('--list');
+  const since = flagValue(args, '--since', twoYearsAgo());
+
+  let codes = args
+    .filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--since')
+    .map((c) => c.toLowerCase());
+
+  if (args.includes('--main-sets')) {
+    const sets = await mainSetCodes(since);
+    console.log(`Sets principaux depuis ${since} :\n`);
+    let total = 0;
+    for (const s of sets) {
+      total += s.count;
+      console.log(`  ${s.date}  ${s.code.toUpperCase().padEnd(5)} ${String(s.count).padStart(4)}  ${s.name}`);
+    }
+    // 0,21 s par carte, mesuré. Autant l'annoncer avant, pas après.
+    console.log(`\n${sets.length} sets, ${total} cartes, ~${Math.round((total * 0.21) / 60)} min.\n`);
+    codes = [...new Set([...codes, ...sets.map((s) => s.code)])];
+  }
+
+  if (listOnly) return;
 
   if (codes.length === 0) {
-    console.error('Usage : node scripts/hash-set.mjs [--dry-run] <code de set> [autre code…]');
+    console.error(
+      'Usage : node scripts/hash-set.mjs [--dry-run] [--main-sets [--since AAAA-MM-JJ]] [codes…]'
+    );
     process.exit(1);
   }
   if (!dryRun && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');

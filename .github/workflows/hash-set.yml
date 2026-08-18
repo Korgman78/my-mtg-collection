@@ -1,18 +1,21 @@
 name: Index set for scanner
 
-# Construit la base de référence perceptuelle d'un ou plusieurs sets.
-# Déclenchement manuel : on indexe les sets dont on a besoin, quand on en a
-# besoin, plutôt que d'entretenir un index de 100 000 cartes.
+# Construit la base de référence perceptuelle du scanner.
 #
-# Durée indicative : ~2 s par carte (téléchargement de l'image + politesse
-# envers Scryfall), soit environ 12 min pour un set standard de 350 cartes.
+# La référence vit dans Supabase : elle se construit UNE fois et sert à tous
+# les appareils. Le job est reprenable — relancé, il saute ce qui est déjà
+# indexé, donc l'interrompre ne coûte rien.
+#
+# Débit mesuré : 0,21 s par carte, soit ~24 min pour les 15 sets principaux
+# des deux dernières années (~7 000 cartes), ~1 min 30 pour un set seul.
 
 on:
   workflow_dispatch:
     inputs:
       sets:
-        description: 'Codes de set séparés par des espaces (ex : otj mh3 blb)'
+        description: '« --main-sets » pour les sets principaux récents, ou des codes séparés par des espaces (ex : otj mh3)'
         required: true
+        default: '--main-sets'
         type: string
 
 concurrency:

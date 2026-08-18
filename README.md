@@ -52,15 +52,26 @@ Ensuite le job tourne tout seul chaque nuit à 04:30 UTC.
 ## Activer le scanner
 
 Le scanner reconnaît une carte en comparant l'empreinte perceptuelle de la
-photo à une base de référence. Cette base se construit **set par set** : tant
-qu'un set n'est pas indexé, le scanner ne peut rien y reconnaître.
+photo à une base de référence. **Cette base vit dans Supabase : on la construit
+une fois, elle sert à tous les appareils.** Un set non indexé ne peut pas être
+reconnu — c'est la seule limite.
 
 1. Applique la migration `supabase/migrations/20260818120000_card_hashes.sql`.
-2. Lance le workflow **Index set for scanner** (onglet Actions → Run workflow)
-   en donnant les codes voulus, séparés par des espaces : `otj mh3 blb`.
-   Compte environ 2 s par carte, soit ~12 min pour un set standard.
-3. En local, si tu as `DATABASE_URL` :
-   `node scripts/hash-set.mjs otj` (ajoute `--dry-run` pour n'écrire nulle part).
+2. Indexe les sets principaux des deux dernières années (~7 000 cartes, ~24 min) :
+   - depuis GitHub : workflow **Index set for scanner**, entrée `--main-sets` ;
+   - en local, avec `DATABASE_URL` : `node scripts/hash-set.mjs --main-sets`.
+3. Ensuite, au besoin, un set à la fois : `node scripts/hash-set.mjs otj mh3`
+   (~1 min 30 par set). Voir la liste sans rien lancer : `--main-sets --list`,
+   et remonter plus loin : `--main-sets --since 2020-01-01`.
+
+Le job est **reprenable** : il saute ce qui est déjà indexé. On peut donc
+l'interrompre, le relancer, ou le reprendre depuis une autre machine.
+Débit mesuré : 0,21 s par carte.
+
+Ce que couvrent les « sets principaux » : les sorties qu'on drafte
+(`expansion`, `core`, `masters`, `draft_innovation`). Sont exclus les jetons,
+promos, memorabilia, masterpieces et Secret Lair. Les decks Commander sont à
+indexer explicitement par leur code.
 
 Le calcul du hachage se fait sur le téléphone : la photo ne quitte jamais
 l'appareil, seules 25 empreintes de 64 bits partent vers la base.
