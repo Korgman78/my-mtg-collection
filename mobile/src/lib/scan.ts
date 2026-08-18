@@ -10,32 +10,47 @@
 
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { frameRect } from '@/lib/card-frame';
+import { frameRectInPhoto } from '@/lib/card-frame';
 import { phashWindows } from '@/lib/phash';
 import { base64ToBytes, decodePng } from '@/lib/png';
 import { supabase } from '@/lib/supabase';
 
-export { CARD_ASPECT, FRAME_FILL, frameRect } from '@/lib/card-frame';
+export { CARD_ASPECT, FRAME_FILL, frameRect, frameRectInPhoto } from '@/lib/card-frame';
 
 /** Largeur de travail. 256 px suffisent très largement pour un hachage 32×32,
  *  et maintiennent les 25 fenêtres à quelques millisecondes de calcul. */
 const WORK_WIDTH = 256;
 
-/** Photo → les 25 hachages qui serviront à interroger la référence. */
+export type HashedPhoto = {
+  hashes: string[];
+  /** L'image réellement hachée. Affichée après un scan raté : voir ce que
+   *  l'app a regardé vaut tous les journaux du monde. */
+  previewUri: string;
+};
+
+/** Photo → les 25 hachages qui serviront à interroger la référence.
+ *
+ *  Les dimensions de l'aperçu sont indispensables : sans elles, on ne peut
+ *  pas savoir quelle partie de la photo le joueur voyait, et on découpe à
+ *  côté. C'était le défaut du premier jet. */
 export async function hashPhoto(
   uri: string,
   photoWidth: number,
-  photoHeight: number
-): Promise<string[]> {
+  photoHeight: number,
+  previewWidth: number,
+  previewHeight: number
+): Promise<HashedPhoto> {
+  const crop = frameRectInPhoto(photoWidth, photoHeight, previewWidth, previewHeight);
+
   const context = ImageManipulator.manipulate(uri);
-  context.crop(frameRect(photoWidth, photoHeight)).resize({ width: WORK_WIDTH });
+  context.crop(crop).resize({ width: WORK_WIDTH });
 
   const rendered = await context.renderAsync();
   const saved = await rendered.saveAsync({ format: SaveFormat.PNG, base64: true });
   if (!saved.base64) throw new Error("L'image n'a pas pu être lue.");
 
   const { data, width, height } = decodePng(base64ToBytes(saved.base64));
-  return phashWindows(data, width, height);
+  return { hashes: phashWindows(data, width, height), previewUri: saved.uri };
 }
 
 export type ScanMatch = {

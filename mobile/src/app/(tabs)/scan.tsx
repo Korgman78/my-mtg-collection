@@ -36,7 +36,7 @@ import { CARD_ASPECT, confidenceOf, hashPhoto, matchPhoto, type ScanMatch } from
 type Stage =
   | { step: 'idle' }
   | { step: 'working'; label: string }
-  | { step: 'results'; matches: ScanMatch[] }
+  | { step: 'results'; matches: ScanMatch[]; previewUri: string }
   | { step: 'error'; message: string };
 
 export default function ScanScreen() {
@@ -44,6 +44,10 @@ export default function ScanScreen() {
   const camera = useRef<CameraView>(null);
   const [stage, setStage] = useState<Stage>({ step: 'idle' });
   const [added, setAdded] = useState<string | null>(null);
+
+  // Taille réelle de l'aperçu à l'écran. Sans elle, impossible de savoir
+  // quelle portion de la photo le joueur voyait : l'aperçu est en « cover ».
+  const [preview, setPreview] = useState({ width: 0, height: 0 });
 
   const folders = useFoldersLite();
   const hashedSets = useHashedSets();
@@ -98,14 +102,23 @@ export default function ScanScreen() {
     setStage({ step: 'working', label: 'Lecture de la carte…' });
 
     try {
-      const photo = await camera.current.takePictureAsync({ quality: 0.9, skipProcessing: true });
+      // `skipProcessing` est volontairement absent : sur Android il renvoie
+      // l'image brute du capteur SANS appliquer l'orientation. La photo
+      // arrivait couchée à 90°, et on hachait une carte à l'horizontale.
+      const photo = await camera.current.takePictureAsync({ quality: 0.9 });
       if (!photo) throw new Error("La photo n'a pas pu être prise.");
 
-      const hashes = await hashPhoto(photo.uri, photo.width, photo.height);
+      const { hashes, previewUri } = await hashPhoto(
+        photo.uri,
+        photo.width,
+        photo.height,
+        preview.width,
+        preview.height
+      );
       setStage({ step: 'working', label: 'Recherche dans la référence…' });
 
       const matches = await matchPhoto(hashes);
-      setStage({ step: 'results', matches });
+      setStage({ step: 'results', matches, previewUri });
     } catch (err) {
       setStage({ step: 'error', message: err instanceof Error ? err.message : String(err) });
     }
@@ -191,7 +204,14 @@ export default function ScanScreen() {
         }
       />
 
-      <View style={styles.viewfinder}>
+      <View
+        style={styles.viewfinder}
+        onLayout={(e) =>
+          setPreview({
+            width: e.nativeEvent.layout.width,
+            height: e.nativeEvent.layout.height,
+          })
+        }>
         <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" />
 
         {/* Repère : même géométrie que la découpe faite sur la photo. */}
@@ -323,6 +343,19 @@ function FolderPicker({
   );
 }
 
+/** Ce que l'app a vraiment haché. Un scan raté devient lisible : soit
+ *  l'image est de travers ou décadrée — c'est la géométrie —, soit elle est
+ *  correcte et c'est l'index qui ne connaît pas la carte. */
+function CropPreview({ uri }: { uri: string | null }) {
+  if (!uri) return null;
+  return (
+    <View style={styles.cropWrap}>
+      <Image source={{ uri }} style={styles.crop} contentFit="contain" transition={120} />
+      <AppText variant="caption">Image analysée</AppText>
+    </View>
+  );
+}
+
 function ResultSheet({
   stage,
   pending,
@@ -336,6 +369,7 @@ function ResultSheet({
 }) {
   const visible = stage.step === 'results' || stage.step === 'error';
   const matches = stage.step === 'results' ? stage.matches : [];
+  const previewUri = stage.step === 'results' ? stage.previewUri : null;
   const confidence = confidenceOf(matches);
 
   return (
@@ -350,9 +384,11 @@ function ResultSheet({
       ) : matches.length === 0 ? (
         <View style={{ gap: Space.sm }}>
           <AppText variant="body">Aucune carte connue ne correspond.</AppText>
+          <CropPreview uri={previewUri} />
           <AppText variant="caption">
-            Deux causes possibles, dans cet ordre : le set n&apos;est pas encore indexé, ou la carte
-            ne remplissait pas le repère. Recadre plus serré avant de conclure.
+            Ci-dessus, l&apos;image que l&apos;app a réellement analysée. Si ce n&apos;est pas ta
+            carte bien à plat et bien cadrée, le problème est le cadrage — pas la reconnaissance.
+            Sinon, c&apos;est que le set n&apos;est pas encore indexé.
           </AppText>
         </View>
       ) : (
@@ -367,6 +403,8 @@ function ResultSheet({
                   : 'Peu sûr : plusieurs cartes se ressemblent ici.'}
             </AppText>
           </View>
+
+          {confidence !== 'sure' ? <CropPreview uri={previewUri} /> : null}
 
           {matches.map((m, i) => (
             <Pressable
@@ -491,6 +529,15 @@ const styles = StyleSheet.create({
   folderDot: { width: 7, height: 7, borderRadius: 4 },
 
   confidenceLine: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
+  cropWrap: { alignItems: 'center', gap: Space.xs },
+  crop: {
+    width: 132,
+    aspectRatio: CARD_ASPECT,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.rule,
+  },
   matchRow: {
     flexDirection: 'row',
     alignItems: 'center',
