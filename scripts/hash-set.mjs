@@ -77,6 +77,24 @@ async function hashCardImage(card) {
   return phashFromGray32(gray32FromRgba(data, width, height));
 }
 
+/** Vérifie que la cible existe AVANT de télécharger quoi que ce soit.
+ *
+ *  Sans ce contrôle, un set standard se télécharge pendant douze minutes
+ *  pour échouer à la première écriture si la migration n'a pas été appliquée.
+ *  Échouer en deux secondes coûte infiniment moins cher. */
+async function preflight(db) {
+  const { rows } = await db.query(
+    `select to_regclass('public.card_hashes') as hashes,
+            to_regclass('public.hashed_sets') as sets`
+  );
+  if (!rows[0].hashes || !rows[0].sets) {
+    throw new Error(
+      'Les tables du scanner sont absentes. Applique d’abord la migration ' +
+        'supabase/migrations/20260818120000_card_hashes.sql, puis relance.'
+    );
+  }
+}
+
 async function hashSet(db, setCode, dryRun) {
   const set = await fetchJson(`https://api.scryfall.com/sets/${setCode}`);
   console.log(`\n${set.code.toUpperCase()} — ${set.name} (${set.card_count} cartes annoncées)`);
@@ -180,7 +198,10 @@ async function main() {
   if (!dryRun && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
 
   const db = dryRun ? null : new pg.Client({ connectionString: process.env.DATABASE_URL });
-  if (db) await db.connect();
+  if (db) {
+    await db.connect();
+    await preflight(db);
+  }
 
   try {
     for (const code of codes) await hashSet(db, code, dryRun);
