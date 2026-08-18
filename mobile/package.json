@@ -10,6 +10,7 @@
     "expo": "^54.0.37",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.14",
+    "expo-dev-client": "~6.0.21",
     "expo-font": "~14.0.12",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@types/pako": "^2.0.4",
     "@types/react": "~19.1.10",
+    "eas-cli": "^22.0.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
@@ -46,7 +48,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:apk": "eas build --platform android --profile preview",
+    "build:dev": "eas build --platform android --profile development"
   },
   "private": true
 }
