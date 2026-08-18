@@ -14,9 +14,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { once } from 'node:events';
+import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
 import pg from 'pg';
-import StreamArray from 'stream-json/streamers/StreamArray.js';
 
 const HEADERS = {
   'User-Agent': 'my-mtg-collection/0.1 (price ingestion)',
@@ -39,10 +39,25 @@ async function main() {
   const tracked = new Set((await db.query('select id from cards')).rows.map((r) => r.id));
   console.log(`Cartes suivies en base : ${tracked.size}`);
 
+  // Scryfall a changé le format de ses exports en 2026 : `download_uri` et
+  // `size` ont disparu au profit de `jsonl_download_uri` et
+  // `compressed_size`, et le contenu n'est plus un tableau JSON mais du
+  // JSONL gzippé — une carte par ligne. L'ancien code téléchargeait donc
+  // `undefined` et le job échouait avant d'écrire quoi que ce soit.
   const index = await (await fetch('https://api.scryfall.com/bulk-data', { headers: HEADERS })).json();
   const bulk = index.data.find((d) => d.type === 'default_cards');
-  console.log(`Téléchargement du bulk (${Math.round(bulk.size / 1e6)} Mo) : ${bulk.download_uri}`);
-  const res = await fetch(bulk.download_uri, { headers: HEADERS });
+  if (!bulk?.jsonl_download_uri) {
+    throw new Error(
+      "L'export « default_cards » de Scryfall n'expose pas jsonl_download_uri : " +
+        `clés reçues = ${Object.keys(bulk ?? {}).join(', ')}. Le format a probablement changé.`
+    );
+  }
+
+  console.log(
+    `Téléchargement du bulk (${Math.round(bulk.compressed_size / 1e6)} Mo compressés) : ` +
+      bulk.jsonl_download_uri
+  );
+  const res = await fetch(bulk.jsonl_download_uri, { headers: HEADERS });
   if (!res.ok) throw new Error(`Bulk download failed: ${res.status}`);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -61,8 +76,17 @@ async function main() {
   const meta = [];
   let paperCards = 0;
 
-  const stream = Readable.fromWeb(res.body).pipe(StreamArray.withParser());
-  for await (const { value: card } of stream) {
+  // Décompression puis lecture ligne à ligne. `readline` fait le découpage
+  // sans jamais charger les 78 Mo en mémoire, et gère les fins de ligne
+  // qui tombent au milieu d'un bloc gzip.
+  const stream = createInterface({
+    input: Readable.fromWeb(res.body).pipe(zlib.createGunzip()),
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of stream) {
+    if (line.length === 0) continue;
+    const card = JSON.parse(line);
     if (!card.games?.includes('paper')) continue;
     paperCards++;
     const p = card.prices ?? {};
