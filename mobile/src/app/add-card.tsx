@@ -3,7 +3,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
@@ -24,6 +24,7 @@ import {
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useAddCard } from '@/lib/collection';
 import { formatEur } from '@/lib/format';
+import { goBack } from '@/lib/nav';
 import { autocompleteNames, cardImages, searchPrintings, type ScryfallCard } from '@/lib/scryfall';
 import type { Finish } from '@/lib/types';
 import { useDebounced } from '@/lib/use-debounced';
@@ -36,8 +37,14 @@ const FINISH_LABEL: Record<Finish, string> = {
 
 export default function AddCardScreen() {
   const { folderId } = useLocalSearchParams<{ folderId: string }>();
-  const router = useRouter();
   const addCard = useAddCard();
+
+  // On revient au dossier d'où l'on vient, et à défaut au tableau de bord :
+  // `router.back()` seul echoue sans bruit quand la pile est vide.
+  const close = () =>
+    goBack(
+      folderId ? { pathname: '/folder/[id]', params: { id: folderId } } : '/'
+    );
 
   const [query, setQuery] = useState('');
   const [selectedName, setSelectedName] = useState<string | null>(null);
@@ -71,7 +78,7 @@ export default function AddCardScreen() {
 
   function submit() {
     if (!selectedCard || !folderId) return;
-    addCard.mutate({ folderId, card: selectedCard, finish, quantity }, { onSuccess: () => router.back() });
+    addCard.mutate({ folderId, card: selectedCard, finish, quantity }, { onSuccess: close });
   }
 
   return (
@@ -79,7 +86,7 @@ export default function AddCardScreen() {
       <AppBar
         title="Ajouter une carte"
         subtitle={`Étape ${step} sur 3 · ${stepLabel}`}
-        right={<IconButton name="close" label="Fermer" onPress={() => router.back()} />}
+        right={<IconButton name="close" label="Fermer" onPress={close} />}
       />
 
       <View style={styles.body}>

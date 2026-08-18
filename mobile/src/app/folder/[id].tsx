@@ -31,6 +31,7 @@ import {
   type SetBulkPhase,
 } from '@/lib/collection';
 import { formatEur } from '@/lib/format';
+import { goBack } from '@/lib/nav';
 import { countSetBulk, fetchSet } from '@/lib/scryfall';
 import { priceForFinish } from '@/lib/types';
 import { useDebounced } from '@/lib/use-debounced';
@@ -72,7 +73,7 @@ export default function FolderScreen() {
       <AppBar
         title={folder.name}
         subtitle={`${totalCopies} exemplaire${totalCopies > 1 ? 's' : ''} · ${items.length} référence${items.length > 1 ? 's' : ''} · ${formatEur(totalValue)}`}
-        onBack={() => router.back()}
+        onBack={() => goBack('/')}
       />
 
       {/* Trois façons de remplir un dossier, toutes nommées. Une action de

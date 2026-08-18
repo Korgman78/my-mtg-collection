@@ -2,7 +2,7 @@
 // puis les actions qu'on peut mener sur cette carte.
 
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
@@ -26,11 +26,11 @@ import {
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useCardDetail, useDeleteItem, useSetItemQuantity } from '@/lib/collection';
 import { formatDate, formatEur } from '@/lib/format';
+import { goBack } from '@/lib/nav';
 import { priceForFinish, type Finish } from '@/lib/types';
 
 export default function CardScreen() {
   const { cardId, itemId } = useLocalSearchParams<{ cardId: string; itemId?: string }>();
-  const router = useRouter();
   const { data, isLoading } = useCardDetail(cardId, itemId);
   const deleteItem = useDeleteItem();
   const setQuantity = useSetItemQuantity();
@@ -67,7 +67,7 @@ export default function CardScreen() {
       <AppBar
         title={card.name}
         subtitle={`${card.set_code.toUpperCase()} · #${card.collector_number}${card.rarity ? ` · ${card.rarity}` : ''}`}
-        onBack={() => router.back()}
+        onBack={() => goBack('/')}
       />
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -190,7 +190,7 @@ export default function CardScreen() {
           const id = item?.id;
           if (!id) return;
           deleteItem.mutate(id, {
-            onSuccess: () => router.back(),
+            onSuccess: () => goBack('/'),
             onSettled: () => setRemoving(false),
           });
         }}
