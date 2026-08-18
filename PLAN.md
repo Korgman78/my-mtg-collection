@@ -54,15 +54,80 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   Écart assumé avec le plan initial : le hachage se fait sur l'appareil et non
   sur le serveur. On n'envoie que 25 × 64 bits au lieu d'une photo, donc pas
   de Storage ni d'Edge Function — et c'est déjà la brique de la phase 4.
-  Base de référence construite **set par set** (`Index set for scanner`).
-  **Reste manuel** : appliquer la migration `20260818120000_card_hashes.sql`,
-  puis lancer le job sur les sets voulus. Sans ça le scanner ne reconnaît rien.
+  Base de référence dans Supabase : **construite une fois, elle sert à tous
+  les appareils** (ni par machine, ni par téléphone). Job reprenable, il saute
+  ce qui est déjà indexé. Débit mesuré : 0,21 s/carte.
+  **Reste manuel** : voir « Reprendre ici » ci-dessous.
+  **Jamais éprouvé sur un vrai téléphone** — voir les réserves plus bas.
 - [ ] **Phase 4 — Scanner temps réel on-device**
   vision-camera + détection contour + pHash/embeddings locaux + vote
   multi-frames + mode rafale.
 - [ ] **Phase 5 — Confort**
   Import/export CSV (Dragon Shield, Moxfield), top movers sur le dashboard,
   prix d'achat éditable, push notifications (dev build), onboarding, animations.
+
+## Reprendre ici — session du 2026-08-18
+
+Tout le code est poussé sur `phase-2-alerts` (5 commits). Rien n'a été fusionné
+dans `master`. Trois choses à faire, dans cet ordre.
+
+### 1. Rendre le scanner utilisable (~30 min, une seule fois)
+
+```sh
+# a. Coller supabase/migrations/20260818120000_card_hashes.sql
+#    dans le SQL editor Supabase.
+
+# b. Voir ce qui sera indexé, sans rien lancer :
+node scripts/hash-set.mjs --main-sets --list
+
+# c. Indexer. 15 sets, 6993 cartes, ~24 min.
+DATABASE_URL="postgres://…" node scripts/hash-set.mjs --main-sets
+```
+
+Ensuite, un set à la demande : `node scripts/hash-set.mjs otj mh3` (~1 min 30
+par set). Le job est reprenable : l'interrompre ne coûte rien.
+
+Les « sets principaux » = les sorties draftables des deux dernières années
+(`expansion`, `core`, `masters`, `draft_innovation`). Secret Lair, jetons,
+promos, memorabilia et masterpieces sont écartés par leur type.
+
+**Question laissée en suspens** : faut-il aussi indexer les 9 decks Commander
+sortis sur la période (3118 cartes, +11 min) ? Ce sont des cartes qu'on
+possède souvent. Il suffit de passer leurs codes au script.
+
+### 2. Éprouver pour de vrai (rien ne l'a été)
+
+Aucun écran n'a été vu à l'écran cette session — l'extension Chrome n'était
+pas connectée, et tout le reste demande d'être authentifié. À vérifier :
+
+- se connecter et parcourir la refonte grimoire ;
+- supprimer un dossier, une règle, une carte (c'est ce qui était cassé) ;
+- ajouter le bulk d'un set dans un dossier ;
+- **scanner une vraie carte depuis Expo Go**.
+
+Si le scan ne reconnaît rien alors que le set est bien indexé, le premier
+endroit où regarder est la correspondance entre le repère affiché
+(`scan.tsx`, `styles.frame`, 82 % de largeur) et la découpe appliquée à la
+photo (`card-frame.ts`, `frameRect`). Les 25 fenêtres sont là pour absorber
+l'écart, mais ça n'a jamais été confronté à une vraie caméra.
+
+### 3. Fusionner dans `master`
+
+`master` est resté à la phase 1. La branche `phase-2-alerts` porte désormais
+les phases 2, 2.5 et 3. Deux conséquences tant qu'on ne fusionne pas :
+
+- le workflow *Index set for scanner* **n'apparaîtra pas** dans l'onglet
+  Actions : GitHub ne propose « Run workflow » que depuis la branche par
+  défaut. En local, le script fonctionne quand même.
+- le secret GitHub `DATABASE_URL` n'est toujours pas configuré, ce qui bloque
+  aussi l'ingestion quotidienne des prix depuis juin.
+
+### Écart connu avec Dragon Shield
+
+Ce qu'on a : on vise une carte, on appuie, l'app propose la bonne à confirmer.
+Ce qu'on n'a pas : le scan continu en rafale, où les cartes défilent sans
+qu'on appuie. C'est la phase 4, et elle demande un development build — Expo Go
+ne suffira pas.
 
 ## Checklist de mise en route (étapes manuelles)
 
@@ -79,8 +144,9 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
       était encore à `false` le 2026-08-18)
 - [ ] Secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM` (pour le digest email)
 - [ ] Migration `20260818120000_card_hashes.sql` appliquée (scanner)
-- [ ] Au moins un set indexé via le workflow *Index set for scanner*
-      (sans ça, le scanner ne peut rien reconnaître)
+- [ ] Sets principaux indexés (`hash-set.mjs --main-sets`, ~24 min, une fois)
+- [ ] Un vrai scan réussi depuis Expo Go
+- [ ] `phase-2-alerts` fusionnée dans `master`
 
 ## Notes techniques à retenir
 
@@ -130,8 +196,11 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   donc probablement déjà cassée en natif.
   **Non vérifié** : rien n'a été éprouvé à l'écran ni en base — l'extension
   Chrome n'était pas connectée et tout demande d'être authentifié.
-  Prochaine étape : appliquer la migration, indexer un set, scanner pour de
-  vrai depuis Expo Go.
+  Correction d'usage en fin de séance : l'indexation « set par set » que
+  j'avais proposée passait à côté du but (scanner n'importe quelle carte).
+  D'où `--main-sets`, qui indexe les 15 sets draftables des deux dernières
+  années d'un coup, et un job reprenable.
+  Prochaine étape : tout est dans « Reprendre ici », en haut.
 - **2026-08-18** — Phase 2 commitée (elle dormait en working tree depuis
   trois semaines) sur la branche `phase-2-alerts`, puis refonte UI complète.
   Vérifications faites en séance : les 3 migrations SQL sont bien appliquées,
