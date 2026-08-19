@@ -20,6 +20,31 @@ function throwIfError<T>(res: { data: T | null; error: { message: string } | nul
   return res.data as T;
 }
 
+/** Taille de page pour les listes qui peuvent grandir avec la collection.
+ *
+ *  PostgREST plafonne toute réponse à 1000 lignes, et le fait EN SILENCE :
+ *  pas d'erreur, pas de drapeau, une liste tronquée se lit exactement comme
+ *  une liste complète. C'est ce qui a fait disparaître deux dossiers entiers
+ *  du tableau de bord le 2026-08-19, au 1343e exemplaire.
+ *
+ *  Règle qui en découle : toute requête dont le nombre de lignes croît avec
+ *  la collection passe par `selectAll`, ou agrège en base. Un `.select()` nu
+ *  sur une table qui grandit est un compte à rebours. */
+const PAGE = 1000;
+
+/** Rapatrie toutes les pages d'une requête, jusqu'à en recevoir une
+ *  incomplète — c'est le seul signal de fin que PostgREST donne. */
+async function selectAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const rows = throwIfError(await page(from, from + PAGE - 1)) as T[];
+    all.push(...rows);
+    if (rows.length < PAGE) return all;
+  }
+}
+
 /** Taille de lot pour les filtres `in.(…)`.
  *
  *  PostgREST passe ses filtres dans l'URL, et la passerelle Supabase refuse
@@ -59,33 +84,34 @@ export type DashboardData = {
   totalCards: number;
 };
 
+/** Une ligne d'agrégat renvoyée par `collection_summary`. */
+type FolderSummary = { folder_id: string; item_count: number; value_eur: number | null };
+
 export function useDashboard() {
   return useQuery({
     queryKey: ['collection', 'dashboard'],
     queryFn: async (): Promise<DashboardData> => {
-      const [folders, items] = await Promise.all([
+      // Les sommes se font en base. L'écran téléchargeait auparavant chaque
+      // exemplaire pour les calculer ici, et PostgREST tronquait la réponse à
+      // 1000 lignes sans le dire : passé ce seuil, des dossiers entiers
+      // disparaissaient du décompte. Le nombre de dossiers, lui, ne risque
+      // pas d'atteindre le plafond.
+      const [folders, summary] = await Promise.all([
         supabase.from('folders').select('*').order('position').order('created_at'),
-        supabase.from('collection_items').select('id, folder_id, card_id, finish, quantity'),
-      ]).then((r) => r.map(throwIfError)) as [Folder[], CollectionItem[]];
+        supabase.rpc('collection_summary'),
+      ]).then((r) => r.map(throwIfError)) as [Folder[], FolderSummary[]];
 
-      const stats = await fetchStats([...new Set(items.map((i) => i.card_id))]);
-
-      const byFolder = new Map<string, { count: number; value: number; priced: boolean }>();
-      for (const item of items) {
-        const acc = byFolder.get(item.folder_id) ?? { count: 0, value: 0, priced: false };
-        acc.count += item.quantity;
-        const stat = stats.get(item.card_id);
-        const price = stat ? priceForFinish(stat, item.finish) : null;
-        if (price !== null) {
-          acc.value += price * item.quantity;
-          acc.priced = true;
-        }
-        byFolder.set(item.folder_id, acc);
-      }
+      const byFolder = new Map(summary.map((s) => [s.folder_id, s]));
 
       const enriched = folders.map((f) => {
         const acc = byFolder.get(f.id);
-        return { ...f, itemCount: acc?.count ?? 0, value: acc?.priced ? acc.value : null };
+        // `value_eur` est nul quand aucune carte du dossier n'a de prix connu :
+        // une valeur inconnue, qu'il ne faut pas confondre avec zéro.
+        return {
+          ...f,
+          itemCount: acc?.item_count ?? 0,
+          value: acc?.value_eur === null || acc?.value_eur === undefined ? null : Number(acc.value_eur),
+        };
       });
       return {
         folders: enriched,
@@ -106,14 +132,18 @@ export function useFolder(folderId: string) {
   return useQuery({
     queryKey: ['collection', 'folder', folderId],
     queryFn: async () => {
-      const [folder, items] = await Promise.all([
+      const [folderRes, items] = await Promise.all([
         supabase.from('folders').select('*').eq('id', folderId).single(),
-        supabase
-          .from('collection_items')
-          .select('*, card:cards(*)')
-          .eq('folder_id', folderId)
-          .order('added_at', { ascending: false }),
-      ]).then((r) => r.map(throwIfError)) as [Folder, FolderItem[]];
+        selectAll<FolderItem>((from, to) =>
+          supabase
+            .from('collection_items')
+            .select('*, card:cards(*)')
+            .eq('folder_id', folderId)
+            .order('added_at', { ascending: false })
+            .range(from, to)
+        ),
+      ]);
+      const folder = throwIfError(folderRes) as Folder;
 
       const stats = await fetchStats([...new Set(items.map((i) => i.card_id))]);
       for (const item of items) item.stats = stats.get(item.card_id);
@@ -354,8 +384,20 @@ export function useAddCard() {
           .upsert(rows.price, { onConflict: 'card_id,snapped_on', ignoreDuplicates: true })
       );
 
-      // 3. L'item lui-même — en cumulant si la carte est déjà là.
-      return addOrIncrement(input.folderId, card.id, input.finish, input.quantity);
+      // 3. Le finish, borné à ce que l'impression propose réellement.
+      //
+      //    Certaines cartes n'existent qu'en foil, d'autres qu'en normal.
+      //    Enregistrer un finish absent donnerait une ligne sans prix : on
+      //    suivrait une carte qui n'existe pas. On retombe alors sur ce que
+      //    l'impression a, et on remonte le finish retenu pour que l'écran
+      //    puisse dire ce qui a vraiment été enregistré.
+      const available = (card.finishes ?? []) as Finish[];
+      const finish = available.includes(input.finish) ? input.finish : (available[0] ?? 'nonfoil');
+
+      // 4. L'item lui-même — en cumulant si la carte est déjà là. La clé
+      //    inclut le finish : une foil et une normale sont deux lignes.
+      const result = await addOrIncrement(input.folderId, card.id, finish, input.quantity);
+      return { ...result, finish };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
   });
@@ -412,19 +454,14 @@ function chunked<T>(rows: T[]): T[][] {
  *  tronquée nous ferait ré-ajouter des cartes déjà présentes, c'est-à-dire
  *  exactement le doublon que cette fonction existe pour éviter. */
 async function existingCardIds(folderId: string): Promise<Set<string>> {
-  const PAGE = 1000;
-  const ids = new Set<string>();
-  for (let from = 0; ; from += PAGE) {
-    const rows = throwIfError(
-      await supabase
-        .from('collection_items')
-        .select('card_id')
-        .eq('folder_id', folderId)
-        .range(from, from + PAGE - 1)
-    ) as { card_id: string }[];
-    for (const r of rows) ids.add(r.card_id);
-    if (rows.length < PAGE) return ids;
-  }
+  const rows = await selectAll<{ card_id: string }>((from, to) =>
+    supabase
+      .from('collection_items')
+      .select('card_id')
+      .eq('folder_id', folderId)
+      .range(from, to)
+  );
+  return new Set(rows.map((r) => r.card_id));
 }
 
 export type SetBulkResult = { added: number; skipped: number };

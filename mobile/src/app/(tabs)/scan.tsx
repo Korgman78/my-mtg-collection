@@ -35,6 +35,7 @@ import {
   Loading,
   Pill,
   Screen,
+  Segmented,
   Sheet,
   Surface,
 } from '@/components/ui';
@@ -61,6 +62,7 @@ export default function ScanScreen() {
   const camera = useRef<CameraView>(null);
   const [stage, setStage] = useState<Stage>({ step: 'idle' });
   const [added, setAdded] = useState<string | null>(null);
+  const [foil, setFoil] = useState(false);
 
   // Taille réelle de l'aperçu à l'écran. Sans elle, impossible de savoir
   // quelle portion de la photo le joueur voyait : l'aperçu est en « cover ».
@@ -208,13 +210,18 @@ export default function ScanScreen() {
     const folder = targetFolder;
     if (!folder) return;
     addScanned.mutate(
-      { folderId: folder, cardId: match.card_id, finish: 'nonfoil' },
+      { folderId: folder, cardId: match.card_id, finish: foil ? 'foil' : 'nonfoil' },
       {
         onSuccess: (result) => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           // On dit le total atteint, pas « ajoutée » : sur un playset, savoir
           // qu'on en est au troisième exemplaire est toute l'information.
-          setAdded(result.merged ? `${match.name} ×${result.quantity}` : match.name);
+          // Le finish retenu est celui que la mutation a RÉELLEMENT écrit :
+          // une impression qui n'existe pas en foil retombe sur ce qu'elle a.
+          const suffixe = result.finish === 'nonfoil' ? '' : ' · ✦ foil';
+          setAdded(
+            (result.merged ? `${match.name} ×${result.quantity}` : match.name) + suffixe
+          );
           setStage({ step: 'idle' });
         },
       }
@@ -385,6 +392,8 @@ export default function ScanScreen() {
         stage={stage}
         pending={addScanned.isPending}
         onPick={addMatch}
+        foil={foil}
+        onFoilChange={setFoil}
         onClose={() => setStage({ step: 'idle' })}
       />
     </Screen>
@@ -447,11 +456,15 @@ function ResultSheet({
   stage,
   pending,
   onPick,
+  foil,
+  onFoilChange,
   onClose,
 }: {
   stage: Stage;
   pending: boolean;
   onPick: (m: ScanMatch) => void;
+  foil: boolean;
+  onFoilChange: (v: boolean) => void;
   onClose: () => void;
 }) {
   const visible = stage.step === 'results' || stage.step === 'error';
@@ -517,6 +530,24 @@ function ResultSheet({
           </View>
 
           {confidence !== 'sure' ? <CropPreview uri={previewUri} /> : null}
+
+          {/* Foil ou non : le scanner ne peut pas trancher. Le reflet d'un
+              foil varie davantage avec l'angle de la photo qu'avec la carte
+              elle-même, et se tromper mélangerait deux entrées qui n'ont ni
+              le même prix ni le même suivi. C'est donc une main humaine qui
+              le dit, au moment où elle tient la carte.
+
+              Le choix reste posé d'un scan à l'autre : on trie rarement une
+              carte foil isolée, plutôt une pile. Le bandeau de confirmation
+              rappelle ensuite ce qui a été enregistré. */}
+          <Segmented
+            options={[
+              { value: 'nonfoil', label: 'Normale' },
+              { value: 'foil', label: '✦ Foil' },
+            ]}
+            value={(foil ? 'foil' : 'nonfoil') as 'nonfoil' | 'foil'}
+            onChange={(v) => onFoilChange(v === 'foil')}
+          />
 
           {matches.map((m, i) => (
             <Pressable
