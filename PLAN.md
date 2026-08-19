@@ -68,7 +68,7 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   l'illustration est hachée désormais** (paire la plus proche à 16 bits).
   Détection de carte ajoutée **en complément** du balayage de fenêtres.
   Index : 15 995 empreintes, 39 sets.
-- [x] **Phase 3.5 — Publication** *(2026-08-19)*
+- [x] **Phase 3.5 — Publication** *(2026-08-19)* — **V0.1**
   APK installable produit par EAS, `com.korgman.grimoire`. Six tentatives :
   verrou npm généré sous Windows inutilisable sous Linux (retiré du dépôt),
   puis deux contraintes de version Node. L'app ne dépend plus d'Expo Go.
@@ -191,6 +191,30 @@ teste contre la vraie base.
   attendront un development build ; en attendant, alertes in-app + email.
 
 ## Journal
+
+- **2026-08-19 (V0.1)** — Fin de journée : renommage, marque, et une V0.1
+  buildée. L'app s'appelle **My MTG Collection** et porte enfin un logo
+  (trois cartes en éventail, généré par `scripts/make-icons.mjs` en six
+  variantes depuis une seule description de forme).
+  Écrans peaufinés : squelettes de chargement partout où la forme du contenu
+  est connue — une seule pulsation partagée par toute l'app, comptée par
+  références — et le disque qui tourne réservé aux deux endroits où on ne
+  sait pas encore ce qui vient. Filtre de dossiers dans l'onglet Collection.
+  Deux bugs de navigation corrigés : la barre d'onglets passait sous les
+  boutons Android, et le retour depuis le scanner ramenait à la liste des
+  dossiers au lieu du dossier en cours — `/scan` étant un onglet, y aller
+  depuis un dossier quitte la pile et c'est la barre d'onglets qui répond.
+  **Le mail hebdo redessiné** : bandeau illustré du plus fort mouvement,
+  vignettes de cartes, histogramme de valeur en cellules de tableau (Gmail
+  supprime les SVG). Mode `--preview` pour juger la mise en page sans
+  attendre l'ingestion.
+  **Sur le scanner** : mesuré, pas supposé. Un tiers des cartes de l'index
+  ont un voisin d'un autre nom à moins de 14 bits, quand une photo à main
+  levée en dégrade autant — voilà les 10 % d'échecs, et Vayne's Treachery
+  (FIN) en est un cas ordinaire, pas une anomalie. L'illustration en 2×2 a
+  été **réessayée et reste la pire piste** (14/30 contre 30/30 pour
+  l'existant) : plus discriminante en théorie, trop sensible au cadrage en
+  pratique. Aucune modification faite, la base est jugée bonne.
 
 - **2026-08-19 (suite)** — Matinée ouverte sur une panne : la collection ne
   chargeait plus. Ni le serveur ni la session n'y étaient pour quelque chose —
