@@ -81,32 +81,41 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 ## Reprendre ici — au 2026-08-19
 
-L'app tourne **en vrai** sur un S24 Ultra, installée depuis un APK. Le scanner
-reconnaît les cartes. Tout est poussé sur `phase-2-alerts`.
+L'app s'appelle **My MTG Collection** et tourne en V0.1 sur un S24 Ultra,
+installée depuis un APK. Le scanner reconnaît les cartes, l'historique de prix
+a commencé, et le mail hebdo attend ses secrets Resend.
 
-### À faire en premier — fusionner `phase-2-alerts` dans `master`
+`master` et `phase-2-alerts` sont au même point : la branche n’a plus de
+raison d'être, on peut la supprimer et repartir d'une branche par sujet.
 
-Ce n'est pas du rangement, c'est le préalable à tout historique de prix.
-Vérifié le 2026-08-19 en interrogeant la base : `price_snapshots` ne contient
-que deux jours, le 17 (1 ligne) et le 18 (780 lignes), qui correspondent
-exactement aux cartes ajoutées depuis l'app — celle-ci insère le prix du jour
-à l'ajout. **L'ETL nocturne n'a donc jamais rien écrit**, y compris au passage
-de 04:30 UTC ce matin.
+### À vérifier demain matin — le cron tourne-t-il tout seul ?
 
-Deux causes, la seconde étant la vraie :
+C'est la seule inconnue qui reste sur la chaîne de prix. L'ingestion a été
+lancée **à la main** le 2026-08-19 (971 relevés, archive de 107 355 cartes,
+valeur des 7 dossiers recalculée), parce que le runner GitHub est resté en
+file toute la journée. `master` porte maintenant tout le code, y compris le
+correctif du format Scryfall, donc le cron de 04:30 UTC a de quoi réussir.
 
-1. le workflow n'a jamais été lancé une première fois à la main ;
-2. **GitHub ne déclenche les tâches planifiées que depuis la branche par
-   défaut.** Or `master` ignore encore `4f03f9d`, le commit qui répare le
-   changement de format des exports Scryfall (`download_uri` →
-   `jsonl_download_uri`). Le cron y exécuterait la version qui télécharge
-   `undefined`.
+Le test est simple : **est-ce que `archives/2026-08-20.csv.gz` apparaît tout
+seul dans le dépôt ?** Si oui, la chaîne est autonome et il n'y a plus à y
+penser. Sinon, lire le log du run — c'est ce qui a résolu les trois pannes
+de la veille.
 
-Tant que ça n'est pas fait, ni les tendances ni les alertes n'ont de quoi se
-nourrir : deux écrans entiers restent vides par construction.
+Rappel de ce que l'historique débloque au fur et à mesure : la fenêtre 3
+jours des tendances devient exploitable le 20, celle de 7 jours le 24, et
+les règles d'alerte (qui portent toutes sur 7 jours) ne peuvent rien
+déclencher avant.
 
-Ensuite seulement : Actions → *Daily price ingestion* → Run workflow, et
-vérifier qu'il passe au vert (et que l'archive est bien committée).
+### Reste côté toi
+
+- Les secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM`, sans lesquels le
+  mail hebdo — redessiné le 2026-08-19, avec visuels de cartes — ne part
+  pas. `node --env-file=.env scripts/send-digest.mjs --preview` en montre le
+  rendu sans rien envoyer.
+- Une règle d'alerte plus sensible (±5 % sur 1 jour) si tu veux éprouver la
+  chaîne d'alerte de bout en bout : les deux règles actuelles guettent +50 %
+  et +100 % sur 7 jours, volontairement rares.
+
 
 ### Reconstruire l'app après un changement
 
@@ -158,6 +167,32 @@ teste contre la vraie base.
 
 ## Notes techniques à retenir
 
+- **PostgREST tronque à 1000 lignes, en silence.** Ni erreur, ni drapeau : une
+  liste tronquée se lit exactement comme une liste complète. Deux pannes le
+  2026-08-19 — un `in.(…)` de 780 UUID qui dépassait les 24 Ko d'URL de la
+  passerelle, puis deux dossiers disparus du tableau de bord au 1343e
+  exemplaire. **Règle qui en découle** : toute requête dont le nombre de
+  lignes croît avec la collection agrège en base (`collection_summary`) ou
+  pagine (`selectAll` dans `collection.ts`). Un `.select()` nu sur une table
+  qui grandit est un compte à rebours.
+
+- **Les mouvements sont des prix unitaires, la valeur est un stock.** L'écart
+  en euros ne se multiplie jamais par le nombre d'exemplaires : ça mélange de
+  combien la carte a bougé et combien on en possède, et trois communes à deux
+  centimes passent devant une rare qui en prend cinq. La valeur d'une ligne,
+  elle, reste bien le prix multiplié par la quantité.
+
+- **Une fenêtre de tendance a besoin d'un relevé aussi ancien qu'elle.** La
+  fenêtre 7 jours reste vide tant que l'historique n'a pas sept jours, même si
+  les prix bougent tous les jours. D'où la fenêtre 1 jour, et un état vide qui
+  nomme la fenêtre au lieu d'affirmer que rien n'a bougé.
+
+- **Le finish fait partie de la clé.** Une foil et une normale sont deux lignes
+  distinctes (`addOrIncrement` cumule sur dossier + carte + finish), avec des
+  prix et un suivi séparés. Le scanner ne peut pas deviner le foil — le reflet
+  varie plus avec l'angle qu'avec la carte — donc c'est un choix explicite à la
+  confirmation. `useAddCard` refuse un finish que l'impression ne propose pas.
+
 - **Le pHash est un contrat.** `mobile/src/lib/phash.ts` est importé tel quel
   par l'app ET par le job d'indexation (strip-types natif de Node ≥ 22). Le
   modifier rend incomparables tous les hachages déjà en base : il faudrait
@@ -191,6 +226,28 @@ teste contre la vraie base.
   attendront un development build ; en attendant, alertes in-app + email.
 
 ## Journal
+- **2026-08-19 (soir)** — Après-midi de corrections, toutes nées d'un usage
+  réel. **Deux dossiers avaient disparu du tableau de bord** : MKM compté à 24
+  cartes sur 181, SOS à 0 sur 186, alors que leurs écrans de dossier les
+  montraient tous. PostgREST plafonne à 1000 lignes en silence, et l'écran
+  téléchargeait les 1343 exemplaires pour en faire des sommes. Agrégé en base
+  (`collection_summary`), et la règle générale posée dans les notes.
+  **Les gains passent au prix unitaire** : multiplier par le nombre
+  d'exemplaires mélangeait « de combien la carte a bougé » et « combien j'en
+  possède ». **Les foils existent enfin** : le scanner écrivait `nonfoil` en
+  dur, donc 100 % de la collection l'était, alors que le reste de la chaîne
+  gère les foils depuis le début. **Tendances** gagne la fenêtre 1 jour, la
+  seule qui ait des données avant samedi, et un état vide qui dit pourquoi.
+  L'ingestion a été lancée à la main, le runner GitHub étant resté en file
+  toute la journée : 971 relevés, l'historique commence.
+  Côté scanner, une piste évaluée puis **écartée sur mesure** : l'illustration
+  en 2×2 reste la pire stratégie (14/30 contre 30/30), plus discriminante en
+  théorie mais trop sensible au cadrage. La base est jugée bonne à 90 %.
+  **Leçon de la journée**, jumelle de celle de la veille : une requête qui
+  échoue doit le dire. Le matin, une erreur devenait un spinner éternel ; le
+  soir, une liste tronquée se lisait comme une liste complète. Les deux
+  pannes ont duré parce que rien ne signalait l'anomalie, pas parce qu'elles
+  étaient difficiles.
 
 - **2026-08-19 (V0.1)** — Fin de journée : renommage, marque, et une V0.1
   buildée. L'app s'appelle **My MTG Collection** et porte enfin un logo
