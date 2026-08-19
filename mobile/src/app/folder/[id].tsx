@@ -179,8 +179,8 @@ export default function FolderScreen() {
         />
         <AppText variant="caption">
           Les deux critères de hausse portent sur sept jours et ne disent pas la même chose : une
-          commune qui prend 300 % gagne trois centimes, une rare qui prend 4 % en gagne douze. Le
-          tri en euros tient compte du nombre d&apos;exemplaires.
+          commune qui prend 300 % gagne trois centimes, une rare qui prend 4 % en gagne douze. Les
+          deux portent sur le prix unitaire, quel que soit le nombre d&apos;exemplaires.
         </AppText>
       </Sheet>
     </Screen>

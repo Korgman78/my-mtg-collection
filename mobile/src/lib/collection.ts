@@ -198,10 +198,15 @@ export function itemMetrics(item: FolderItem) {
 
   // Le prix d'il y a sept jours se déduit du prix courant et de la variation.
   // À −100 % la carte ne valait rien : on refuse la division.
+  //
+  // Écart UNITAIRE, jamais multiplié par le nombre d'exemplaires. Multiplier
+  // mélange deux questions : de combien la carte a bougé, et combien j’en
+  // possède. Trois communes à deux centimes passaient alors devant une rare
+  // qui en prend cinq, ce qui ne dit rien du marché et tout de mes achats.
   const gainEur =
     unit === null || pct === null || pct <= -100
       ? null
-      : (unit - unit / (1 + pct / 100)) * item.quantity;
+      : unit - unit / (1 + pct / 100);
 
   return { unit, value, pct, gainEur };
 }
