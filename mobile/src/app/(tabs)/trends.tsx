@@ -31,6 +31,7 @@ import { usePriceMovers, type MoverOrder, type MoverWindow, type PriceMover } fr
 import { formatEur } from '@/lib/format';
 
 const WINDOW_LABEL: Record<MoverWindow, string> = {
+  1: 'la veille',
   3: '3 jours',
   7: '7 jours',
   30: '1 mois',
@@ -71,11 +72,12 @@ export default function TrendsScreen() {
       <View style={styles.controls}>
         <Segmented
           options={[
+            { value: '1', label: '1 jour' },
             { value: '3', label: '3 jours' },
             { value: '7', label: '7 jours' },
             { value: '30', label: '1 mois' },
           ]}
-          value={String(windowDays) as '3' | '7' | '30'}
+          value={String(windowDays) as '1' | '3' | '7' | '30'}
           onChange={(v) => setWindowDays(Number(v) as MoverWindow)}
         />
         <Segmented
@@ -102,7 +104,7 @@ export default function TrendsScreen() {
         <EmptyState
           icon="chart"
           title="Rien à signaler"
-          hint="Aucun mouvement de prix mesurable sur cette période. L'historique se construit une nuit à la fois : il faut au moins deux relevés pour comparer quoi que ce soit."
+          hint={`Rien à comparer sur ${WINDOW_LABEL[windowDays]}. Une fenêtre a besoin d’un relevé aussi ancien qu’elle : tant que l’historique est plus court, elle reste vide, même si les prix bougent. Essaie une fenêtre plus courte.`}
         />
       ) : (
         <FlatList

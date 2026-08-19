@@ -126,7 +126,7 @@ export function useFolder(folderId: string) {
 /* Tendances de prix                                                           */
 /* -------------------------------------------------------------------------- */
 
-export type MoverWindow = 3 | 7 | 30;
+export type MoverWindow = 1 | 3 | 7 | 30;
 export type MoverOrder = 'pct' | 'eur';
 
 export type PriceMover = {
