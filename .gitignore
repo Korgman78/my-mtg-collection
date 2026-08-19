@@ -15,3 +15,7 @@ grimoire-*.png
 # paquets tires par eslint dont le build n'a pas besoin. Sans verrou commite,
 # EAS lance `npm install` et resout pour sa propre plateforme.
 mobile/package-lock.json
+
+# Aperçu du mail : régénéré à la demande par
+# `node --env-file=.env scripts/send-digest.mjs --preview`.
+apercu-digest.html
