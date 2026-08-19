@@ -48,8 +48,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:apk": "npx eas-cli@latest build --platform android --profile preview",
-    "build:dev": "npx eas-cli@latest build --platform android --profile development"
+    "build:apk": "node scripts/eas-build.mjs preview",
+    "build:dev": "node scripts/eas-build.mjs development"
   },
   "private": true
 }
