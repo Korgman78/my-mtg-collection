@@ -13,6 +13,7 @@ import {
   Button,
   ChangeBadge,
   EmptyState,
+  ErrorState,
   FinishBadge,
   IconButton,
   Loading,
@@ -49,14 +50,15 @@ type ViewMode = 'grid' | 'list';
 export default function FolderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { data, isLoading, refetch, isRefetching } = useFolder(id);
+  const { data, error, isLoading, refetch, isRefetching } = useFolder(id);
   const [bulking, setBulking] = useState(false);
   const [mode, setMode] = useState<ViewMode>('grid');
   const [sort, setSort] = useState<SortKey>('name');
   const [sorting, setSorting] = useState(false);
   const setQuantity = useSetItemQuantity();
 
-  if (isLoading || !data) return <Loading />;
+  if (isLoading) return <Loading />;
+  if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
   const { folder, items: unsorted } = data;
   const items = sortItems(unsorted, sort);
 

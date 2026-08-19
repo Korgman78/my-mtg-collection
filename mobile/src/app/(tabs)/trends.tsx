@@ -19,6 +19,7 @@ import {
   AppText,
   ChangeBadge,
   EmptyState,
+  ErrorState,
   FinishBadge,
   Loading,
   Screen,
@@ -46,6 +47,9 @@ export default function TrendsScreen() {
   const loading = risers.isLoading || fallers.isLoading;
   const refreshing = risers.isRefetching || fallers.isRefetching;
   const empty = (risers.data?.length ?? 0) === 0 && (fallers.data?.length ?? 0) === 0;
+  // Une requête en échec n'est pas une absence de mouvement : sans ça,
+  // une panne réseau s'annonce « Rien à signaler ».
+  const failure = risers.error ?? fallers.error;
 
   const openCard = (m: PriceMover) =>
     router.push({ pathname: '/card/[cardId]', params: { cardId: m.card_id } });
@@ -86,6 +90,14 @@ export default function TrendsScreen() {
 
       {loading ? (
         <Loading />
+      ) : failure ? (
+        <ErrorState
+          detail={failure.message}
+          onRetry={() => {
+            risers.refetch();
+            fallers.refetch();
+          }}
+        />
       ) : empty ? (
         <EmptyState
           icon="chart"

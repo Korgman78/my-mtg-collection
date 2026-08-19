@@ -14,6 +14,7 @@ import {
   ChangeBadge,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   IconButton,
   Loading,
   Screen,
@@ -36,7 +37,7 @@ import type { Folder } from '@/lib/types';
 
 export default function AlertsScreen() {
   const router = useRouter();
-  const { data, isLoading, refetch, isRefetching } = useAlerts();
+  const { data, error, isLoading, refetch, isRefetching } = useAlerts();
   const toggleRule = useToggleRule();
   const deleteRule = useDeleteRule();
   const markSeen = useMarkAlertsSeen();
@@ -50,7 +51,8 @@ export default function AlertsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (isLoading || !data) return <Loading />;
+  if (isLoading) return <Loading />;
+  if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
 
   return (
     <Screen>

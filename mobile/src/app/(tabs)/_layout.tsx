@@ -11,20 +11,33 @@
 
 import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons';
 import { Colors, Fonts, Space } from '@/constants/theme';
 import { useUnseenAlertCount } from '@/lib/alerts';
 
+// Hauteur de la barre elle-même, hors zone système.
+const BAR_HEIGHT = 62;
+
 export default function TabsLayout() {
   const { data: unseen = 0 } = useUnseenAlertCount();
+  // Fixer la hauteur en dur écrase le calcul de zone sûre de React Navigation :
+  // sur un Android à navigation gestuelle ou à trois boutons, la barre passait
+  // sous les commandes du système. On réintègre donc l'inset à la main, en
+  // hauteur ET en marge basse — la hauteur seule laisserait les libellés collés
+  // au bord.
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: Colors.bg },
-        tabBarStyle: styles.bar,
+        tabBarStyle: [
+          styles.bar,
+          { height: BAR_HEIGHT + insets.bottom, paddingBottom: Space.sm + insets.bottom },
+        ],
         tabBarItemStyle: styles.item,
         tabBarLabelStyle: styles.label,
         tabBarActiveTintColor: Colors.accent,
@@ -69,7 +82,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.rule,
-    height: 62,
+    height: BAR_HEIGHT,
     paddingTop: Space.sm,
     paddingBottom: Space.sm,
     elevation: 0,

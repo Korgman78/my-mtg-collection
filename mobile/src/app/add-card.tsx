@@ -82,7 +82,7 @@ export default function AddCardScreen() {
   }
 
   return (
-    <Screen>
+    <Screen safeBottom>
       <AppBar
         title="Ajouter une carte"
         subtitle={`Étape ${step} sur 3 · ${stepLabel}`}

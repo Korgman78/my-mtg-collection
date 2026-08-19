@@ -12,6 +12,7 @@ import {
   ConfirmDialog,
   Diamond,
   EmptyState,
+  ErrorState,
   FormField,
   IconButton,
   Loading,
@@ -30,14 +31,44 @@ import { supabase } from '@/lib/supabase';
 
 type FolderEntry = DashboardData['folders'][number];
 
+/** En dessous de ce nombre de dossiers, un champ de filtre coûte plus d'écran
+ *  qu'il n'en fait gagner. Le seuil porte sur le total, jamais sur le nombre
+ *  de résultats — sinon le champ disparaîtrait sous les doigts dès que le
+ *  filtre devient sélectif. */
+const FILTER_FROM = 5;
+
+/** Comparaison souple : sans accents, sans casse.
+ *
+ *  « Édition » doit sortir sur « edition ». Sur un clavier de téléphone,
+ *  personne ne va chercher l'accent pour filtrer une liste.
+ *
+ *  U+0300–U+036F est la plage des diacritiques combinants, que la
+ *  décomposition NFD isole des lettres. On l'écrit ainsi plutôt qu'avec
+ *  `\p{Diacritic}` : les classes Unicode ne sont pas acquises sur Hermes. */
+function normalize(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
-  const { data, isLoading, refetch, isRefetching } = useDashboard();
+  const { data, error, isLoading, refetch, isRefetching } = useDashboard();
   const deleteFolder = useDeleteFolder();
   const [creating, setCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FolderEntry | null>(null);
+  const [filter, setFilter] = useState('');
 
-  if (isLoading || !data) return <Loading />;
+  if (isLoading) return <Loading />;
+  if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
+
+  const needle = normalize(filter);
+  const filtering = needle.length > 0;
+  const folders = filtering
+    ? data.folders.filter((f) => normalize(f.name).includes(needle))
+    : data.folders;
 
   return (
     <Screen>
@@ -53,7 +84,7 @@ export default function DashboardScreen() {
       />
 
       <FlatList
-        data={data.folders}
+        data={folders}
         keyExtractor={(f) => f.id}
         contentContainerStyle={styles.list}
         refreshing={isRefetching}
@@ -72,19 +103,51 @@ export default function DashboardScreen() {
               </View>
             </Surface>
 
-            <SectionHeader
-              title="Dossiers"
-              action={{ label: 'Nouveau', icon: 'plus', onPress: () => setCreating(true) }}
-            />
+            <View style={styles.folderHead}>
+              <SectionHeader
+                title="Dossiers"
+                action={{ label: 'Nouveau', icon: 'plus', onPress: () => setCreating(true) }}
+              />
+              {data.folders.length >= FILTER_FROM ? (
+                <TextField
+                  icon="search"
+                  placeholder="Filtrer les dossiers"
+                  value={filter}
+                  onChangeText={setFilter}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  right={
+                    filter ? (
+                      <IconButton
+                        name="close"
+                        label="Effacer le filtre"
+                        size="sm"
+                        onPress={() => setFilter('')}
+                      />
+                    ) : undefined
+                  }
+                />
+              ) : null}
+            </View>
           </View>
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="folder"
-            title="Aucun dossier"
-            hint="Les dossiers rangent ta collection : un par deck, par édition, ou une wishlist. Les cartes s'ajoutent ensuite dedans."
-            action={{ label: 'Créer un dossier', icon: 'plus', onPress: () => setCreating(true) }}
-          />
+          filtering ? (
+            <EmptyState
+              icon="search"
+              title="Aucun dossier ne correspond"
+              hint={`Rien ne porte « ${filter.trim()} ». Le filtre ignore les accents et la casse.`}
+              action={{ label: 'Effacer le filtre', onPress: () => setFilter('') }}
+            />
+          ) : (
+            <EmptyState
+              icon="folder"
+              title="Aucun dossier"
+              hint="Les dossiers rangent ta collection : un par deck, par édition, ou une wishlist. Les cartes s'ajoutent ensuite dedans."
+              action={{ label: 'Créer un dossier', icon: 'plus', onPress: () => setCreating(true) }}
+            />
+          )
         }
         renderItem={({ item }) => (
           <FolderRow
@@ -253,6 +316,7 @@ function CreateFolderSheet({ visible, onClose }: { visible: boolean; onClose: ()
 const styles = StyleSheet.create({
   list: { paddingHorizontal: Space.lg, paddingBottom: Space.xxl, gap: Space.sm, flexGrow: 1 },
   header: { gap: Space.lg, marginBottom: Space.sm },
+  folderHead: { gap: Space.sm },
   valueCard: { gap: Space.xs, alignItems: 'flex-start', paddingVertical: Space.xl },
   valueFoot: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
 

@@ -20,12 +20,37 @@ function throwIfError<T>(res: { data: T | null; error: { message: string } | nul
   return res.data as T;
 }
 
+/** Taille de lot pour les filtres `in.(…)`.
+ *
+ *  PostgREST passe ses filtres dans l'URL, et la passerelle Supabase refuse
+ *  toute requête au-delà de 24 Ko — sans message utile : un `400 Bad Request`
+ *  en texte brut. Un UUID pèse 37 caractères virgule comprise, si bien que la
+ *  collection a franchi le seuil dans la nuit du 2026-08-19 (780 cartes,
+ *  29 Ko d'URL) et que le tableau de bord ne chargeait plus du tout.
+ *
+ *  200 ids font 7,5 Ko, soit trois fois moins que la limite. Ne pas remonter
+ *  ce nombre pour « économiser une requête » : la marge absorbe l'URL de base
+ *  et la croissance de la collection, elle n'est pas de la prudence gratuite. */
+const STATS_CHUNK = 200;
+
 async function fetchStats(cardIds: string[]): Promise<Map<string, CardPriceStats>> {
   if (cardIds.length === 0) return new Map();
-  const rows = throwIfError(
-    await supabase.from('card_price_stats').select('*').in('card_id', cardIds)
-  ) as CardPriceStats[];
-  return new Map(rows.map((r) => [r.card_id, r]));
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < cardIds.length; i += STATS_CHUNK) {
+    chunks.push(cardIds.slice(i, i + STATS_CHUNK));
+  }
+
+  const batches = await Promise.all(
+    chunks.map(
+      async (chunk) =>
+        throwIfError(
+          await supabase.from('card_price_stats').select('*').in('card_id', chunk)
+        ) as CardPriceStats[]
+    )
+  );
+
+  return new Map(batches.flat().map((r) => [r.card_id, r]));
 }
 
 export type DashboardData = {

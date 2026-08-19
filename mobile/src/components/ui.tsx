@@ -38,10 +38,28 @@ import { Colors, Control, Fonts, MaxContentWidth, Radius, Space } from '@/consta
 /* Structure                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export function Screen({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+/** Cadre commun d'un écran.
+ *
+ *  Le bas n'est pas protégé par défaut, et c'est voulu : sous un écran à
+ *  onglets, c'est la barre d'onglets qui occupe la zone système, et réserver
+ *  l'inset ici creuserait un vide au-dessus d'elle. Les écrans empilés qui
+ *  ancrent un contrôle en bas (`marginTop: 'auto'`) passent `safeBottom` —
+ *  sans quoi le contrôle se glisse sous les boutons de navigation Android.
+ *  Une liste qui défile n'en a pas besoin : sa marge basse suffit. */
+export function Screen({
+  children,
+  style,
+  safeBottom = false,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  safeBottom?: boolean;
+}) {
   return (
     <View style={styles.screenRoot}>
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <SafeAreaView
+        style={styles.safe}
+        edges={safeBottom ? ['top', 'left', 'right', 'bottom'] : ['top', 'left', 'right']}>
         <View style={[styles.screenBody, style]}>{children}</View>
       </SafeAreaView>
     </View>
@@ -384,8 +402,17 @@ export function TextField({
   label,
   icon,
   error,
+  right,
   ...props
-}: TextInputProps & { label?: string; icon?: IconName; error?: string }) {
+}: TextInputProps & {
+  label?: string;
+  icon?: IconName;
+  error?: string;
+  /** Contrôle posé dans le champ, à droite — un bouton d'effacement, par
+   *  exemple. Android n'a pas d'équivalent au `clearButtonMode` d'iOS : sans
+   *  ça, on ne vide un champ qu'à la touche retour arrière. */
+  right?: ReactNode;
+}) {
   return (
     <View style={{ gap: Space.xs }}>
       {label ? <AppText variant="label">{label}</AppText> : null}
@@ -400,6 +427,7 @@ export function TextField({
           {...props}
           style={[styles.input, icon ? styles.inputWithIcon : null, props.style]}
         />
+        {right ? <View style={styles.inputRight}>{right}</View> : null}
       </View>
       {error ? (
         <AppText variant="caption" style={{ color: Colors.danger }}>
@@ -497,6 +525,44 @@ export function EmptyState({
           onPress={action.onPress}
           style={{ marginTop: Space.sm }}
         />
+      ) : null}
+    </View>
+  );
+}
+
+/** Écran d'échec de chargement.
+ *
+ *  Existe parce qu'un `if (isLoading || !data) return <Loading />` transforme
+ *  toute erreur en spinner éternel : le 2026-08-19, le tableau de bord a tourné
+ *  dans le vide une matinée entière alors que le serveur répondait un 400 franc
+ *  et immédiat. Une requête qui échoue doit le dire, et proposer de réessayer.
+ *
+ *  `detail` porte le message technique. On l'affiche — c'est une app qu'on
+ *  s'écrit à soi-même, et un message brut vaut mieux qu'un « oups » poli. */
+export function ErrorState({
+  title = 'Chargement impossible',
+  detail,
+  onRetry,
+}: {
+  title?: string;
+  detail?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <View style={styles.empty}>
+      <View style={[styles.emptyIcon, styles.errorIcon]}>
+        <Icon name="alert" size={22} color={Colors.danger} />
+      </View>
+      <AppText variant="heading" style={{ textAlign: 'center' }}>
+        {title}
+      </AppText>
+      {detail ? (
+        <AppText variant="caption" style={styles.errorDetail}>
+          {detail}
+        </AppText>
+      ) : null}
+      {onRetry ? (
+        <Button label="Réessayer" onPress={onRetry} style={{ marginTop: Space.sm }} />
       ) : null}
     </View>
   );
@@ -817,6 +883,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts?.sans,
   },
   inputWithIcon: { paddingLeft: Space.sm },
+  inputRight: { paddingRight: Space.xs },
 
   badge: {
     flexDirection: 'row',
@@ -868,6 +935,8 @@ const styles = StyleSheet.create({
     marginBottom: Space.xs,
   },
   emptyHint: { textAlign: 'center', color: Colors.textSecondary, maxWidth: 320 },
+  errorIcon: { backgroundColor: Colors.dangerSoft, borderColor: Colors.dangerBorder },
+  errorDetail: { textAlign: 'center', color: Colors.textSecondary, maxWidth: 320 },
 
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg },
 
