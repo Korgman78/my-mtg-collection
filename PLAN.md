@@ -1,4 +1,4 @@
-# Grimoire — Plan & état d'avancement
+# My MTG Collection — Plan & état d'avancement
 
 > Document vivant : mis à jour à chaque session de travail.
 > Dernière mise à jour : **2026-08-19**
@@ -15,7 +15,7 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 | Brique | Choix | Note |
 |---|---|---|
-| App mobile | Expo **SDK 54** / React Native 0.81, expo-router 6 | `mobile/` — app nommée **Grimoire**, thème grimoire : encre chaude, parchemin, or vieilli |
+| App mobile | Expo **SDK 54** / React Native 0.81, expo-router 6 | `mobile/` — app nommée **My MTG Collection**, thème grimoire : encre chaude, parchemin, or vieilli |
 | Backend | Supabase (Postgres, Auth, RLS) | projet `lrpyrbhemwutvfkwpgah` |
 | Données cartes & prix | Scryfall (bulk quotidien + API autocomplete) | EUR Cardmarket / USD TCGplayer ; attribution obligatoire |
 | Historique prix | Construit par nous (Scryfall n'en fournit pas) | snapshots en base pour les cartes suivies + archives complètes dans `archives/` |
@@ -84,32 +84,29 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 L'app tourne **en vrai** sur un S24 Ultra, installée depuis un APK. Le scanner
 reconnaît les cartes. Tout est poussé sur `phase-2-alerts`.
 
-### À corriger en premier — bug d'affichage connu
+### À faire en premier — fusionner `phase-2-alerts` dans `master`
 
-**La barre d'onglets passe sous la barre de navigation Android** (les boutons
-`III O <`). Cause identifiée, correctif non appliqué : `(tabs)/_layout.tsx`
-impose `height: 62` en dur dans `tabBarStyle`, ce qui écrase le calcul de zone
-sûre de React Navigation. Il faut ajouter l'inset bas :
+Ce n'est pas du rangement, c'est le préalable à tout historique de prix.
+Vérifié le 2026-08-19 en interrogeant la base : `price_snapshots` ne contient
+que deux jours, le 17 (1 ligne) et le 18 (780 lignes), qui correspondent
+exactement aux cartes ajoutées depuis l'app — celle-ci insère le prix du jour
+à l'ajout. **L'ETL nocturne n'a donc jamais rien écrit**, y compris au passage
+de 04:30 UTC ce matin.
 
-```ts
-const insets = useSafeAreaInsets();       // react-native-safe-area-context
-// tabBarStyle: [styles.bar, { height: 62 + insets.bottom,
-//                             paddingBottom: Space.sm + insets.bottom }]
-```
+Deux causes, la seconde étant la vraie :
 
-À vérifier au passage sur `add-card.tsx`, dont le bloc d'actions est en
-`marginTop: 'auto'` sans écran d'onglets pour le protéger.
+1. le workflow n'a jamais été lancé une première fois à la main ;
+2. **GitHub ne déclenche les tâches planifiées que depuis la branche par
+   défaut.** Or `master` ignore encore `4f03f9d`, le commit qui répare le
+   changement de format des exports Scryfall (`download_uri` →
+   `jsonl_download_uri`). Le cron y exécuterait la version qui télécharge
+   `undefined`.
 
-### Deux choses en attente, côté toi
+Tant que ça n'est pas fait, ni les tendances ni les alertes n'ont de quoi se
+nourrir : deux écrans entiers restent vides par construction.
 
-1. **Le workflow *Daily price ingestion* n'a pas encore été lancé.** Le secret
-   `DATABASE_URL` est configuré, mais le run reste à déclencher (Actions →
-   Run workflow) pour confirmer qu'il passe au vert. Sans lui, aucun
-   historique de prix ne se construit — donc pas de tendances ni d'alertes.
-2. **`master` est resté à la phase 1.** La branche `phase-2-alerts` porte tout
-   le reste. Tant qu'elle n'est pas fusionnée, le workflow *Index set for
-   scanner* n'apparaît pas dans l'onglet Actions (GitHub ne propose
-   « Run workflow » que depuis la branche par défaut).
+Ensuite seulement : Actions → *Daily price ingestion* → Run workflow, et
+vérifier qu'il passe au vert (et que l'archive est bien committée).
 
 ### Reconstruire l'app après un changement
 
@@ -194,6 +191,28 @@ teste contre la vraie base.
   attendront un development build ; en attendant, alertes in-app + email.
 
 ## Journal
+
+- **2026-08-19 (suite)** — Matinée ouverte sur une panne : la collection ne
+  chargeait plus. Ni le serveur ni la session n'y étaient pour quelque chose —
+  c'est l'ajout en masse de la veille qui a fait franchir un seuil. PostgREST
+  passe ses filtres dans l'URL ; 780 UUID font 28 947 caractères, et la
+  passerelle Supabase refuse au-delà de 24 Ko. Mesuré contre le serveur :
+  600 ids passent, 700 repartent en 400. Requête découpée en lots de 200.
+  **Ce qui a coûté le plus cher, c'est que la panne était muette** :
+  `if (isLoading || !data) return <Loading />` transforme toute erreur en
+  spinner éternel. Le serveur répondait un 400 franc et immédiat pendant que
+  l'app tournait dans le vide. D'où `ErrorState`, branché sur les quatre
+  onglets. **Leçon, jumelle de celle d'hier** : hier il fallait lire le log,
+  aujourd'hui il fallait qu'il y en ait un. Une requête qui échoue doit le dire.
+  Corrigé dans la foulée, un build étant de toute façon nécessaire : la barre
+  d'onglets réintègre l'inset système, et `Screen` gagne `safeBottom` pour les
+  écrans empilés qui ancrent un contrôle en bas.
+  Ajouts : filtre de dossiers dans l'onglet Collection (sans accents ni casse,
+  à partir de 5 dossiers), renommage en **My MTG Collection**, et un logo —
+  trois cartes en éventail, généré par `scripts/make-icons.mjs` en six
+  variantes depuis une seule description de forme.
+  Découverte du jour, en répondant à « à quelle heure tourne l'ETL ? » :
+  **il ne tourne pas du tout**. Voir « À faire en premier », en haut.
 
 - **2026-08-19** — Le scanner marche pour de vrai, sur un vrai téléphone.
   Deux causes profondes trouvées et corrigées, aucune visible en simulation :
