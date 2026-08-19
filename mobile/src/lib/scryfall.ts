@@ -10,7 +10,7 @@ const BASE = 'https://api.scryfall.com';
 // qu'en natif plutôt que de le voir ignoré silencieusement.
 const HEADERS = {
   Accept: 'application/json',
-  ...(Platform.OS === 'web' ? {} : { 'User-Agent': 'Grimoire/0.1 (collection MTG)' }),
+  ...(Platform.OS === 'web' ? {} : { 'User-Agent': 'MyMTGCollection/0.1 (collection MTG)' }),
 };
 
 /** Scryfall demande 50–100 ms entre deux requêtes. On tient 120 ms. */

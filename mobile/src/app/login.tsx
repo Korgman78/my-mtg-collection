@@ -45,7 +45,7 @@ export default function LoginScreen() {
             <Icon name="layers" size={22} color={Colors.accent} strokeWidth={1.8} />
           </View>
           <AppText variant="title" style={styles.wordmark}>
-            Grimoire
+            My MTG Collection
           </AppText>
           <Divider ornament style={styles.heroRule} />
           <AppText variant="body" style={styles.tagline}>
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   },
   // Le nom de l'app est le seul texte de l'app à respirer : lettres écartées,
   // comme un titre frappé sur une couverture.
-  wordmark: { letterSpacing: 2, textTransform: 'uppercase' },
+  wordmark: { letterSpacing: 1.5, textTransform: 'uppercase', textAlign: 'center' },
   heroRule: { width: 120 },
   tagline: { color: Colors.textSecondary, textAlign: 'center', maxWidth: 280 },
   form: { gap: Space.lg },

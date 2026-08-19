@@ -1,22 +1,21 @@
 {
   "expo": {
-    "name": "Grimoire",
+    "name": "My MTG Collection",
     "slug": "grimoire",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "grimoire",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0B0E14",
+    "backgroundColor": "#0B0907",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.korgman.grimoire"
     },
     "android": {
       "package": "com.korgman.grimoire",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#14110D",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -32,17 +31,17 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Grimoire utilise l'appareil photo pour reconnaître tes cartes. La photo ne quitte pas le téléphone : seule son empreinte est envoyée.",
+          "cameraPermission": "My MTG Collection utilise l'appareil photo pour reconnaître tes cartes. La photo ne quitte pas le téléphone : seule son empreinte est envoyée.",
           "recordAudioAndroid": false
         }
       ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0B0E14",
+          "backgroundColor": "#0B0907",
           "android": {
             "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "imageWidth": 128
           }
         }
       ]
