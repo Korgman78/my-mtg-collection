@@ -13,9 +13,17 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import {
+  BackHandler,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { Icon } from '@/components/icons';
 import {
@@ -48,6 +56,7 @@ type Stage =
   | { step: 'error'; message: string };
 
 export default function ScanScreen() {
+  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
   const [stage, setStage] = useState<Stage>({ step: 'idle' });
@@ -75,6 +84,36 @@ export default function ScanScreen() {
   const lockedToFolder = !!folderParam && !unlocked;
   const targetFolder = lockedToFolder ? (folderParam ?? null) : chosenFolder;
   const targetName = folders.data?.find((f) => f.id === targetFolder)?.name ?? null;
+
+  // Retour vers le dossier d'où l'on vient.
+  //
+  // `/scan` est un onglet : y aller depuis un dossier quitte la pile pour la
+  // barre d'onglets, et l'écran du dossier n'est plus au-dessus. Le retour
+  // natif Android est alors traité par la barre elle-même, qui revient à son
+  // premier onglet — on atterrit sur la liste de tous les dossiers, pas sur
+  // celui qu'on était en train de remplir.
+  //
+  // `dismissTo` plutôt que `push` : si l'écran du dossier est encore dans la
+  // pile on y redescend, sinon il remplace l'écran courant. Dans les deux cas
+  // la pile ne grossit pas, et on ne peut pas empiler deux fois le même
+  // dossier l'un sur l'autre.
+  const backToFolder = useCallback(() => {
+    if (!folderParam) return false;
+    router.dismissTo({ pathname: '/folder/[id]', params: { id: folderParam } });
+    return true;
+  }, [folderParam, router]);
+
+  // On n'intercepte que tant que l'écran sert ce dossier-là. Une fois la
+  // porte de sortie prise, `folderParam` est un reste d'URL et non une
+  // provenance : ramener vers un dossier qu'on a quitté serait déroutant.
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android' || !lockedToFolder) return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', backToFolder);
+      return () => sub.remove();
+    }, [lockedToFolder, backToFolder])
+  );
+
 
   // Un refus de permission ne doit jamais être silencieux : c'est ce qui a
   // fait passer ce bouton pour cassé. On garde le dernier résultat et la
@@ -188,7 +227,11 @@ export default function ScanScreen() {
     const refused = !permission.canAskAgain;
     return (
       <Screen>
-        <AppBar title="Scanner" />
+        <AppBar
+          title="Scanner"
+          onBack={lockedToFolder ? () => backToFolder() : undefined}
+          backLabel={targetName ? `Retour à « ${targetName} »` : 'Retour au dossier'}
+        />
         <EmptyState
           icon="card"
           title="La caméra est nécessaire"
@@ -237,6 +280,8 @@ export default function ScanScreen() {
     <Screen>
       <AppBar
         title="Scanner"
+        onBack={lockedToFolder ? () => backToFolder() : undefined}
+        backLabel={targetName ? `Retour à « ${targetName} »` : 'Retour au dossier'}
         subtitle={
           targetName
             ? `Vers « ${targetName} »`

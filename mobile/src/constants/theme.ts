@@ -1,4 +1,4 @@
-// Design tokens de Grimoire.
+// Design tokens de My MTG Collection.
 //
 // Direction : grimoire — encre chaude, parchemin, dorure.
 //
@@ -122,4 +122,7 @@ export const MaxContentWidth = 720;
 export const Motion = {
   fast: 120,
   base: 180,
+  // Demi-cycle d'un squelette de chargement. Plus court, ça clignote et
+  // ça inquiète ; plus long, on ne voit plus que l'app travaille.
+  pulse: 900,
 } as const;

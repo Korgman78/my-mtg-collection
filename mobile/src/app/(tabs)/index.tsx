@@ -15,12 +15,12 @@ import {
   ErrorState,
   FormField,
   IconButton,
-  Loading,
   Pill,
   Screen,
   SectionHeader,
   Segmented,
   Sheet,
+  Skeleton,
   Surface,
   TextField,
 } from '@/components/ui';
@@ -61,7 +61,7 @@ export default function DashboardScreen() {
   const [pendingDelete, setPendingDelete] = useState<FolderEntry | null>(null);
   const [filter, setFilter] = useState('');
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <DashboardSkeleton />;
   if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
 
   const needle = normalize(filter);
@@ -313,6 +313,53 @@ function CreateFolderSheet({ visible, onClose }: { visible: boolean; onClose: ()
   );
 }
 
+/** Largeurs inégales, et fixées une fois pour toutes.
+ *
+ *  Des barres toutes de la même longueur se lisent comme un tableau, pas comme
+ *  des noms de dossiers. Tirées au hasard, elles changeraient à chaque rendu et
+ *  frétilleraient sous l'œil : c'est une constante, pas un `Math.random()`. */
+const SKELETON_WIDTHS = ['52%', '68%', '41%', '60%'] as const;
+
+/** Squelette du tableau de bord.
+ *
+ *  Il emprunte les styles de l'écran plutôt que d'en recopier les valeurs :
+ *  c'est ce qui garantit que la vraie liste vienne se poser là où le squelette
+ *  l'annonçait. */
+function DashboardSkeleton() {
+  return (
+    <Screen>
+      <AppBar title="Collection" />
+
+      <View style={styles.list}>
+        <View style={styles.header}>
+          <Surface tone="plate" style={styles.valueCard}>
+            <Skeleton width={132} height={9} />
+            <Skeleton width={186} height={30} radius={Radius.md} style={styles.skeletonValue} />
+            <Skeleton width={214} height={9} />
+          </Surface>
+
+          <View style={styles.folderHead}>
+            <SectionHeader title="Dossiers" />
+          </View>
+        </View>
+
+        {SKELETON_WIDTHS.map((width, i) => (
+          <View key={i} style={styles.row}>
+            <View style={styles.rowMain}>
+              <View style={[styles.dot, styles.skeletonDot]} />
+              <View style={styles.skeletonBody}>
+                <Skeleton width={width} height={14} />
+                <Skeleton width={56} height={10} />
+              </View>
+              <Skeleton width={52} height={14} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
   list: { paddingHorizontal: Space.lg, paddingBottom: Space.xxl, gap: Space.sm, flexGrow: 1 },
   header: { gap: Space.lg, marginBottom: Space.sm },
@@ -343,6 +390,10 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1, gap: 2 },
   rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
   dot: { width: 10, height: 10, borderRadius: 5 },
+
+  skeletonValue: { marginVertical: Space.xs },
+  skeletonDot: { backgroundColor: Colors.skeleton },
+  skeletonBody: { flex: 1, gap: Space.sm },
 
   swatchRow: { flexDirection: 'row', gap: Space.sm },
   swatch: { padding: 2, borderRadius: Radius.pill, borderWidth: 1.5, borderColor: 'transparent' },

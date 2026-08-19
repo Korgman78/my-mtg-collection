@@ -15,11 +15,12 @@ import {
   ChangeBadge,
   ConfirmDialog,
   Divider,
+  ErrorState,
   FinishBadge,
-  Loading,
   Pill,
   Screen,
   SectionHeader,
+  Skeleton,
   Stepper,
   Surface,
 } from '@/components/ui';
@@ -31,13 +32,14 @@ import { priceForFinish, type Finish } from '@/lib/types';
 
 export default function CardScreen() {
   const { cardId, itemId } = useLocalSearchParams<{ cardId: string; itemId?: string }>();
-  const { data, isLoading } = useCardDetail(cardId, itemId);
+  const { data, error, isLoading, refetch } = useCardDetail(cardId, itemId);
   const deleteItem = useDeleteItem();
   const setQuantity = useSetItemQuantity();
   const [alerting, setAlerting] = useState(false);
   const [removing, setRemoving] = useState(false);
 
-  if (isLoading || !data) return <Loading />;
+  if (isLoading) return <CardSkeleton onBack={() => goBack('/')} />;
+  if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
   const { card, snapshots, stats, item } = data;
   const finish: Finish = item?.finish ?? 'nonfoil';
   const isFoil = finish !== 'nonfoil';
@@ -207,6 +209,43 @@ function StatCell({ label, value, color }: { label: string; value: string; color
         {value}
       </AppText>
     </View>
+  );
+}
+
+/** Squelette d'une fiche carte.
+ *
+ *  L'illustration est le bloc coûteux : 64 % de la largeur au rapport 63:88.
+ *  La réserver évite que la page entière se recompose quand l'image arrive. */
+function CardSkeleton({ onBack }: { onBack: () => void }) {
+  return (
+    <Screen>
+      <AppBar title="Carte" onBack={onBack} />
+
+      <View style={styles.content}>
+        <View style={styles.artWrap}>
+          <Skeleton style={styles.art} radius={Radius.lg} />
+        </View>
+
+        <Surface style={styles.priceCard}>
+          <View style={styles.priceMain}>
+            <View style={{ gap: Space.sm }}>
+              <Skeleton width={92} height={9} />
+              <Skeleton width={124} height={26} radius={Radius.md} />
+            </View>
+            <Skeleton width={58} height={22} radius={Radius.pill} />
+          </View>
+
+          <View style={styles.statsGrid}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={styles.statCell}>
+                <Skeleton width={78} height={9} />
+                <Skeleton width={62} height={14} style={{ marginTop: Space.xs }} />
+              </View>
+            ))}
+          </View>
+        </Surface>
+      </View>
+    </Screen>
   );
 }
 

@@ -21,10 +21,10 @@ import {
   EmptyState,
   ErrorState,
   FinishBadge,
-  Loading,
   Screen,
   SectionHeader,
   Segmented,
+  Skeleton,
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
 import { usePriceMovers, type MoverOrder, type MoverWindow, type PriceMover } from '@/lib/collection';
@@ -89,7 +89,7 @@ export default function TrendsScreen() {
       </View>
 
       {loading ? (
-        <Loading />
+        <MoversSkeleton />
       ) : failure ? (
         <ErrorState
           detail={failure.message}
@@ -137,6 +137,37 @@ export default function TrendsScreen() {
         />
       )}
     </Screen>
+  );
+}
+
+/** Squelette des tendances : deux sections, comme à l'arrivée.
+ *
+ *  Les contrôles (fenêtre et unité) restent au-dessus et fonctionnent : ils ne
+ *  dépendent d'aucune requête, et changer de fenêtre pendant le chargement est
+ *  exactement ce qu'on fait quand on trouve le temps long. */
+function MoversSkeleton() {
+  return (
+    <View style={styles.list}>
+      {['Plus fortes hausses', 'Plus fortes baisses'].map((title) => (
+        <View key={title} style={{ gap: Space.sm }}>
+          <SectionHeader title={title} />
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={styles.row}>
+              <Skeleton width={10} height={10} radius={Radius.pill} />
+              <Skeleton width={34} height={47} radius={Radius.sm} />
+              <View style={styles.body}>
+                <Skeleton width="62%" height={13} />
+                <Skeleton width="34%" height={10} />
+              </View>
+              <View style={styles.figures}>
+                <Skeleton width={48} height={13} />
+                <Skeleton width={36} height={10} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
   );
 }
 

@@ -16,10 +16,11 @@ import {
   ErrorState,
   FinishBadge,
   IconButton,
-  Loading,
   Screen,
   Segmented,
   Sheet,
+  Skeleton,
+  Spinner,
   Surface,
   TextField,
 } from '@/components/ui';
@@ -57,7 +58,7 @@ export default function FolderScreen() {
   const [sorting, setSorting] = useState(false);
   const setQuantity = useSetItemQuantity();
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <FolderSkeleton onBack={() => goBack('/')} />;
   if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
   const { folder, items: unsorted } = data;
   const items = sortItems(unsorted, sort);
@@ -280,7 +281,10 @@ function SetBulkSheet({
           Le code à trois lettres du set, celui imprimé en bas à gauche des cartes.
         </AppText>
       ) : lookup.isFetching ? (
-        <AppText variant="caption">Recherche du set…</AppText>
+        <View style={styles.lookupBusy}>
+          <Spinner />
+          <AppText variant="caption">Recherche du set…</AppText>
+        </View>
       ) : !set ? (
         <AppText variant="caption" style={{ color: Colors.danger }}>
           Aucun set ne porte le code « {debouncedCode.trim().toUpperCase()} ».
@@ -447,6 +451,44 @@ function CardTile({ item, onPress }: { item: FolderItem; onPress: () => void }) 
   );
 }
 
+/** Squelette d'un dossier.
+ *
+ *  La grille est le mode par défaut, donc c'est elle qu'on annonce : six
+ *  vignettes au rapport d'une vraie carte (63:88), le format le plus coûteux à
+ *  réserver. Le titre reste « Dossier » plutôt qu'un nom deviné — un nom faux
+ *  qui se corrige sous l'œil est pire qu'un mot générique.
+ *
+ *  La barre d'outils, elle, est bien réelle : l'identifiant du dossier vient
+ *  de l'URL, pas de la requête, donc scanner et chercher marchent déjà. */
+function FolderSkeleton({ onBack }: { onBack: () => void }) {
+  return (
+    <Screen>
+      <AppBar title="Dossier" onBack={onBack} />
+
+      <View style={styles.grid}>
+        {[0, 1, 2].map((row) => (
+          <View key={row} style={styles.skeletonRow}>
+            <CardTileSkeleton />
+            <CardTileSkeleton />
+          </View>
+        ))}
+      </View>
+    </Screen>
+  );
+}
+
+function CardTileSkeleton() {
+  return (
+    <View style={styles.tile}>
+      <View style={styles.artWrap}>
+        <Skeleton style={styles.art} radius={0} />
+      </View>
+      <Skeleton width="78%" height={12} />
+      <Skeleton width="44%" height={10} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
@@ -494,6 +536,8 @@ const styles = StyleSheet.create({
 
   grid: { paddingHorizontal: Space.lg, paddingBottom: Space.xxl, gap: Space.lg, flexGrow: 1 },
   column: { gap: Space.lg },
+  skeletonRow: { flexDirection: 'row', gap: Space.lg },
+  lookupBusy: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
   tile: { flex: 1, gap: Space.sm, maxWidth: '50%' },
   artWrap: {
     borderRadius: Radius.lg,

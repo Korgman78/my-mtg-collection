@@ -16,9 +16,9 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
-  Loading,
   Screen,
   SectionHeader,
+  Skeleton,
   Surface,
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
@@ -51,7 +51,7 @@ export default function AlertsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <AlertsSkeleton />;
   if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
 
   return (
@@ -254,6 +254,51 @@ function useAlertFolderNames(): Record<string, string> {
       .then(({ data }) => setFolders((data as Pick<Folder, 'id' | 'name'>[]) ?? []));
   }, []);
   return useMemo(() => Object.fromEntries(folders.map((f) => [f.id, f.name])), [folders]);
+}
+
+/** Squelette des alertes : les règles, puis le fil d'activité.
+ *
+ *  Deux rubriques, comme à l'arrivée — c'est la structure de l'écran qui
+ *  renseigne, bien plus que le nombre exact de lignes réservées. */
+function AlertsSkeleton() {
+  return (
+    <Screen>
+      <AppBar title="Alertes" />
+
+      <View style={styles.list}>
+        <View style={styles.headerBlock}>
+          <SectionHeader title="Mes règles" />
+          <View style={{ gap: Space.sm }}>
+            {[0, 1].map((i) => (
+              <Surface key={i} padded={false} style={styles.ruleCard}>
+                <View style={styles.ruleBody}>
+                  <Skeleton width="58%" height={13} />
+                  <Skeleton width="80%" height={10} />
+                </View>
+                <Skeleton width={38} height={22} radius={Radius.pill} />
+              </Surface>
+            ))}
+          </View>
+
+          <SectionHeader title="Activité" />
+        </View>
+
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i} style={styles.eventRow}>
+            <Skeleton width={40} height={56} radius={Radius.sm} />
+            <View style={styles.eventBody}>
+              <Skeleton width="66%" height={13} />
+              <Skeleton width="42%" height={10} />
+            </View>
+            <View style={styles.eventRight}>
+              <Skeleton width={52} height={13} />
+              <Skeleton width={34} height={10} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({

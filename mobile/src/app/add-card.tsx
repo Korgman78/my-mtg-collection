@@ -15,9 +15,10 @@ import {
   EmptyState,
   FormField,
   IconButton,
-  Loading,
   Screen,
   Segmented,
+  Skeleton,
+  Spinner,
   Stepper,
   TextField,
 } from '@/components/ui';
@@ -96,6 +97,13 @@ export default function AddCardScreen() {
             <TextField
               icon="search"
               placeholder="Nom de la carte…"
+              right={
+                // Emplacement de largeur fixe : l'indicateur qui apparaît ne
+                // doit pas repousser le texte qu'on est en train de taper.
+                <View style={styles.searchBusy}>
+                  {suggestions.isFetching ? <Spinner /> : null}
+                </View>
+              }
               value={query}
               autoFocus
               autoCorrect={false}
@@ -119,7 +127,7 @@ export default function AddCardScreen() {
                 contentContainerStyle={styles.list}
                 ListEmptyComponent={
                   suggestions.isFetching ? (
-                    <Loading />
+                    <SuggestionsSkeleton />
                   ) : (
                     <EmptyState icon="search" title="Aucun résultat" hint="Vérifie l'orthographe du nom." />
                   )
@@ -158,7 +166,7 @@ export default function AddCardScreen() {
               }}
             />
             {printings.isLoading ? (
-              <Loading />
+              <PrintingsSkeleton />
             ) : (
               <FlatList
                 data={printings.data ?? []}
@@ -260,9 +268,46 @@ export default function AddCardScreen() {
   );
 }
 
+/** Suggestions en attente : quatre lignes à la hauteur exacte des vraies.
+ *
+ *  C'est l'écran où le squelette gagne le plus. On y tape lettre après lettre,
+ *  et chaque frappe relance une requête : un spinner qui remplace la liste la
+ *  ferait clignoter à chaque caractère, alors que des lignes qui restent en
+ *  place donnent une liste qui se précise au lieu d'une qui se recharge. */
+function SuggestionsSkeleton() {
+  return (
+    <View style={styles.list}>
+      {(['64%', '48%', '72%', '54%'] as const).map((width, i) => (
+        <View key={i} style={styles.suggestion}>
+          <Skeleton width={width} height={13} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Éditions en attente : vignette, nom du set, prix. */
+function PrintingsSkeleton() {
+  return (
+    <View style={styles.list}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={styles.printing}>
+          <Skeleton style={styles.printingThumb} radius={Radius.sm} />
+          <View style={{ flex: 1, gap: Space.sm }}>
+            <Skeleton width="58%" height={13} />
+            <Skeleton width="34%" height={10} />
+          </View>
+          <Skeleton width={46} height={13} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: Space.lg, paddingBottom: Space.lg, gap: Space.lg },
   list: { gap: Space.sm, paddingBottom: Space.xl, flexGrow: 1 },
+  searchBusy: { width: 22, alignItems: 'center' },
   rowPressed: { backgroundColor: Colors.surfaceHover },
 
   suggestion: {

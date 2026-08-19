@@ -1,4 +1,4 @@
-// Primitives visuelles de Grimoire.
+// Primitives visuelles de My MTG Collection.
 //
 // Tout écran se compose à partir d'ici : aucun écran ne redéclare une couleur,
 // une hauteur de bouton ou un rayon. Si un besoin n'est pas couvert, on ajoute
@@ -14,9 +14,11 @@
 // Une ligne cliquable qui porte une action secondaire se compose donc en deux
 // zones sœurs (voir `FolderRow` dans le tableau de bord), pas en poupées russes.
 
-import { type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -24,6 +26,7 @@ import {
   Text,
   TextInput,
   View,
+  type DimensionValue,
   type StyleProp,
   type TextInputProps,
   type TextStyle,
@@ -32,7 +35,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons';
-import { Colors, Control, Fonts, MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { Colors, Control, Fonts, MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
 
 /* -------------------------------------------------------------------------- */
 /* Structure                                                                   */
@@ -71,16 +74,20 @@ export function AppBar({
   title,
   subtitle,
   onBack,
+  backLabel = 'Retour',
   right,
 }: {
   title: string;
   subtitle?: string;
   onBack?: () => void;
+  /** Ce vers quoi le retour ramène, quand ce n'est pas évident. Une flèche
+   *  muette suffit à l'œil, mais pas à un lecteur d'écran. */
+  backLabel?: string;
   right?: ReactNode;
 }) {
   return (
     <View style={styles.appBar}>
-      {onBack ? <IconButton name="chevronLeft" label="Retour" onPress={onBack} /> : null}
+      {onBack ? <IconButton name="chevronLeft" label={backLabel} onPress={onBack} /> : null}
       <View style={styles.appBarTitles}>
         <AppText variant="heading" numberOfLines={1}>
           {title}
@@ -566,6 +573,94 @@ export function ErrorState({
       ) : null}
     </View>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Squelettes de chargement                                                    */
+/* -------------------------------------------------------------------------- */
+
+// Une seule pulsation pour toute l'app.
+//
+// Chaque bloc pourrait animer la sienne, mais quinze battements désynchronisés
+// se lisent comme du bruit, là où un battement commun se lit comme une
+// intention. La valeur est donc partagée — et comptée : quand plus aucun
+// squelette n'est monté, la boucle s'arrête, au lieu de tourner à vide pour le
+// reste de la session.
+const pulse = new Animated.Value(0);
+let pulseUsers = 0;
+let pulseLoop: Animated.CompositeAnimation | null = null;
+
+function retainPulse() {
+  pulseUsers += 1;
+  if (pulseLoop) return;
+  const half = (toValue: number) =>
+    Animated.timing(pulse, {
+      toValue,
+      duration: Motion.pulse,
+      easing: Easing.inOut(Easing.quad),
+      useNativeDriver: true,
+    });
+  pulseLoop = Animated.loop(Animated.sequence([half(1), half(0)]));
+  pulseLoop.start();
+}
+
+function releasePulse() {
+  pulseUsers -= 1;
+  if (pulseUsers > 0 || !pulseLoop) return;
+  pulseLoop.stop();
+  pulseLoop = null;
+  pulse.setValue(0);
+}
+
+/** Bloc de contenu à venir.
+ *
+ *  Un squelette n'est pas un spinner. Le spinner dit « attends » ; le squelette
+ *  dit « voilà ce qui arrive, et où ». Il doit donc épouser la mise en page
+ *  réelle — mêmes gouttières, mêmes hauteurs, même nombre de lignes. Un
+ *  squelette approximatif produit un saut de mise en page à l'arrivée des
+ *  données, et coûte alors plus qu'il ne rapporte. */
+export function Skeleton({
+  width,
+  height,
+  radius = Radius.sm,
+  style,
+}: {
+  width?: DimensionValue;
+  /** Sans hauteur, le bloc en tire une du style : un `aspectRatio`, par
+   *  exemple, pour une illustration de carte. */
+  height?: number;
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  useEffect(() => {
+    retainPulse();
+    return releasePulse;
+  }, []);
+
+  return (
+    <Animated.View
+      style={[
+        { width, height, borderRadius: radius, backgroundColor: Colors.skeleton },
+        { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.95] }) },
+        style,
+      ]}
+    />
+  );
+}
+
+/** Indicateur d'activité discret, pour un travail en cours qui ne bloque rien :
+ *  une recherche qui se rafraîchit pendant qu'on tape, typiquement.
+ *
+ *  À distinguer du squelette, qui remplace un contenu absent. Ici le contenu
+ *  est déjà là — on signale seulement qu'il est en train de vieillir. */
+export function Spinner({
+  size = 'small',
+  color = Colors.textTertiary,
+}: {
+  size?: 'small' | 'large';
+  color?: string;
+}) {
+  return <ActivityIndicator size={size} color={color} />;
 }
 
 export function Loading() {
