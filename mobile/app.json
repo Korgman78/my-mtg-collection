@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.korgman.grimoire",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#14110D",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
