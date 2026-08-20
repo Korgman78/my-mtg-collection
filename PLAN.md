@@ -88,23 +88,35 @@ a commencé, et le mail hebdo attend ses secrets Resend.
 `master` et `phase-2-alerts` sont au même point : la branche n’a plus de
 raison d'être, on peut la supprimer et repartir d'une branche par sujet.
 
-### À vérifier demain matin — le cron tourne-t-il tout seul ?
+### À vérifier demain matin — le planificateur se réveille-t-il ?
 
-C'est la seule inconnue qui reste sur la chaîne de prix. L'ingestion a été
-lancée **à la main** le 2026-08-19 (971 relevés, archive de 107 355 cartes,
-valeur des 7 dossiers recalculée), parce que le runner GitHub est resté en
-file toute la journée. `master` porte maintenant tout le code, y compris le
-correctif du format Scryfall, donc le cron de 04:30 UTC a de quoi réussir.
+C'est la dernière inconnue de la chaîne de prix, et elle est désormais bien
+cernée. Le **pipeline lui-même fonctionne** : le 2026-08-20, un run déclenché
+à la main est allé au bout pour la première fois de l'histoire du dépôt —
+téléchargement Scryfall, insertion, évaluation des alertes, et archive
+committée par `github-actions[bot]`. Ce qui reste douteux, c'est uniquement le
+**déclencheur planifié**.
 
-Le test est simple : **est-ce que `archives/2026-08-20.csv.gz` apparaît tout
-seul dans le dépôt ?** Si oui, la chaîne est autonome et il n'y a plus à y
-penser. Sinon, lire le log du run — c'est ce qui a résolu les trois pannes
-de la veille.
+Aucun run `schedule` depuis le **10 août**, alors que le workflow est rapporté
+`active` par l'API. L'explication la plus probable reste les **66 jours sans
+commit** entre le 12 juin et le 17 août : GitHub désactive les tâches
+planifiées au-delà de 60 jours, et le dernier run tombe pile à cette échéance.
+Un cycle désactiver/réactiver a été passé le 20, ce qui a pu la lever.
 
-Rappel de ce que l'historique débloque au fur et à mesure : la fenêtre 3
-jours des tendances devient exploitable le 20, celle de 7 jours le 24, et
-les règles d'alerte (qui portent toutes sur 7 jours) ne peuvent rien
-déclencher avant.
+Le test : **est-ce que `archives/2026-08-21.csv.gz` apparaît sans que personne
+n'y touche ?** Si non, chercher un bandeau « Enable workflow » dans l'onglet
+Actions.
+
+À écarter d'emblée : le run zombie du 19/08 (`32233539616`), toujours
+« queued » et increvable — `cancel`, `force-cancel` et `delete` renvoient
+500, 500 et 403. Il a été **prouvé inoffensif** : les runs déclenchés après
+lui démarrent normalement.
+
+Rappel du calendrier de l'historique : la fenêtre 7 jours des tendances
+devient exploitable le 24 août, et les **couloirs P10–P90 — la vraie métrique
+pour décider d'une vente — vers la mi-septembre**, quand 30 jours de relevés
+seront accumulés.
+
 
 ### Reste côté toi
 
@@ -226,6 +238,37 @@ teste contre la vraie base.
   attendront un development build ; en attendant, alertes in-app + email.
 
 ## Journal
+- **2026-08-20** — Journée de fiabilisation, entièrement guidée par l'usage.
+  **Les workflows.** Aucun run planifié depuis le 10 août — 66 jours
+  d'inactivité du dépôt, GitHub coupe à 60. Et un run coincé en file depuis
+  26 h, increvable, mais prouvé inoffensif. Deux vrais défauts corrigés au
+  passage : `cancel-in-progress: false` transformait un blocage de quelques
+  minutes en silence de deux jours, et l'étape d'archive faisait
+  `git pull --rebase` **avant** `git add`, donc échouait précisément lors des
+  rattrapages. Premier run CI vert de bout en bout, archive committée par le
+  bot.
+  **La journée plate.** Tendances s'est vidé : Scryfall n'avait pas publié de
+  nouveaux prix, et deux ingestions dans la même génération avaient écrit deux
+  journées identiques au centime près. Dégât visible, l'écran vide ; dégât
+  invisible, la moyenne 30 jours comptant deux fois le même relevé. Le job
+  retient désormais la génération ingérée et sort en 1 seconde si elle n'a pas
+  changé.
+  **Le prix plancher**, demandé après une mesure parlante : sur les 16 cartes
+  ayant pris ≥ 50 % dans la journée, les 16 valaient moins de 20 centimes et
+  aucune n'atteignait 1 €. La rareté ne trie pas la valeur — la collection le
+  prouve, sa carte la plus chère est une peu commune à 12 €. Plancher ajouté
+  aux alertes et aux tendances (148 hausses sans, 6 avec 1 €).
+  Rendus modifiables : le nom d'un dossier et les caractéristiques d'une
+  alerte — jusqu'ici il fallait supprimer et recréer, donc perdre les cartes
+  ou l'historique d'événements.
+  Index du scanner porté à **17 488 empreintes sur 44 sets** : les cinq
+  extensions possédées mais non indexées (LCI, NEO, OTP, WOE, WOT) sont
+  couvertes.
+  **Leçon de la journée** : les trois pannes étaient silencieuses, pas
+  complexes. Une liste tronquée qui se lit comme une liste complète, une
+  journée dupliquée qui ressemble à un marché calme, un planificateur éteint
+  qui se déclare `active`. Ce qui coûte cher, ce n'est pas la difficulté du
+  diagnostic, c'est l'absence de signal.
 - **2026-08-19 (soir)** — Après-midi de corrections, toutes nées d'un usage
   réel. **Deux dossiers avaient disparu du tableau de bord** : MKM compté à 24
   cartes sur 181, SOS à 0 sur 186, alors que leurs écrans de dossier les
