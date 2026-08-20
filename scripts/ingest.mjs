@@ -23,6 +23,9 @@ const HEADERS = {
   Accept: 'application/json',
 };
 
+/** `--force` : réécrire même si la génération de prix est déjà connue. */
+const force = process.argv.includes('--force');
+
 const SNAPSHOT_COLUMNS = ['card_id', 'snapped_on', 'eur', 'eur_foil', 'eur_etched', 'usd', 'usd_foil', 'usd_etched'];
 
 function chunks(array, size) {
@@ -51,6 +54,31 @@ async function main() {
       "L'export « default_cards » de Scryfall n'expose pas jsonl_download_uri : " +
         `clés reçues = ${Object.keys(bulk ?? {}).join(', ')}. Le format a probablement changé.`
     );
+  }
+
+  // Une génération de prix déjà ingérée ne doit pas produire un second jour.
+  //
+  // Scryfall régénère cet export plusieurs fois par jour, mais les prix qu'il
+  // contient ne bougent qu’environ une fois par 24 h. Deux ingestions dans la
+  // même génération écrivent donc deux journées identiques au centime près —
+  // ce qui vide l'onglet Tendances (il écarte les cartes qui n'ont pas bougé)
+  // et fausse la moyenne 30 jours en comptant deux fois le même relevé.
+  //
+  // Le contrôle est fait AVANT le téléchargement : 78 Mo qu'on évite de tirer.
+  const known = await db
+    .query('select bulk_updated_at from ingest_state where singleton')
+    .then((r) => r.rows[0]?.bulk_updated_at ?? null)
+    .catch(() => null); // table absente : migration pas encore appliquée.
+
+  if (known && new Date(known).getTime() === new Date(bulk.updated_at).getTime() && !force) {
+    console.log(
+      `Génération déjà ingérée (${bulk.updated_at}) — rien à faire.
+` +
+        'Scryfall publie de nouveaux prix environ une fois par jour. ' +
+        'Utilise --force pour réécrire malgré tout.'
+    );
+    await db.end();
+    return;
   }
 
   console.log(
@@ -155,6 +183,19 @@ async function main() {
     console.warn(`Évaluation des alertes sautée : ${err.message}`);
   }
 
+  // Génération retenue, pour que le prochain run sache quoi sauter.
+  await db
+    .query(
+      `insert into ingest_state (singleton, bulk_updated_at, bulk_uri, snapshots)
+       values (true, $1, $2, $3)
+       on conflict (singleton) do update
+         set bulk_updated_at = excluded.bulk_updated_at,
+             bulk_uri        = excluded.bulk_uri,
+             snapshots       = excluded.snapshots,
+             ingested_at     = now()`,
+      [bulk.updated_at, bulk.jsonl_download_uri, snapshots.length]
+    )
+    .catch((err) => console.warn(`État d'ingestion non enregistré : ${err.message}`));
   console.log(`Snapshots insérés : ${snapshots.length} | métadonnées rafraîchies : ${meta.length}`);
   await db.end();
 }
