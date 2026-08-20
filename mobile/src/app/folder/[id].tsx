@@ -31,6 +31,7 @@ import {
   SORT_LABELS,
   useAddSetBulk,
   useFolder,
+  useRenameFolder,
   useSetItemQuantity,
   type FolderItem,
   type SetBulkPhase,
@@ -39,7 +40,7 @@ import {
 import { formatEur } from '@/lib/format';
 import { goBack } from '@/lib/nav';
 import { countSetBulk, fetchSet } from '@/lib/scryfall';
-import { priceForFinish } from '@/lib/types';
+import { priceForFinish, type Folder } from '@/lib/types';
 import { useDebounced } from '@/lib/use-debounced';
 
 /** Deux façons de lire un dossier. La grille montre les illustrations —
@@ -53,6 +54,7 @@ export default function FolderScreen() {
   const router = useRouter();
   const { data, error, isLoading, refetch, isRefetching } = useFolder(id);
   const [bulking, setBulking] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [mode, setMode] = useState<ViewMode>('grid');
   const [sort, setSort] = useState<SortKey>('name');
   const [sorting, setSorting] = useState(false);
@@ -84,6 +86,13 @@ export default function FolderScreen() {
         title={folder.name}
         subtitle={`${totalCopies} exemplaire${totalCopies > 1 ? 's' : ''} · ${items.length} référence${items.length > 1 ? 's' : ''} · ${formatEur(totalValue)}`}
         onBack={() => goBack('/')}
+        right={
+          <IconButton
+            name="pencil"
+            label="Renommer le dossier"
+            onPress={() => setRenaming(true)}
+          />
+        }
       />
 
       {/* Trois façons de remplir un dossier, toutes nommées. Une action de
@@ -163,6 +172,15 @@ export default function FolderScreen() {
       />
 
       <SetBulkSheet folderId={folder.id} visible={bulking} onClose={() => setBulking(false)} />
+
+      {/* `key` sur le nom : la feuille lit sa valeur initiale au montage, et
+          doit repartir du nom courant après un renommage. */}
+      <RenameFolderSheet
+        key={folder.name}
+        folder={folder}
+        visible={renaming}
+        onClose={() => setRenaming(false)}
+      />
 
       <Sheet visible={sorting} onClose={() => setSorting(false)} title="Trier les cartes">
         <Segmented
@@ -488,6 +506,52 @@ function CardTileSkeleton() {
     </View>
   );
 }
+
+/** Renommer un dossier. Le nom est prérempli : on corrige rarement un nom en
+ *  repartant de zéro, on ajuste. */
+function RenameFolderSheet({
+  folder,
+  visible,
+  onClose,
+}: {
+  folder: Folder;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const rename = useRenameFolder();
+  const [name, setName] = useState(folder.name);
+  const valid = name.trim().length > 0;
+
+  return (
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Renommer le dossier"
+      footer={
+        <Button
+          label="Enregistrer"
+          icon="check"
+          onPress={() => rename.mutate({ id: folder.id, name }, { onSuccess: onClose })}
+          loading={rename.isPending}
+          disabled={!valid}
+        />
+      }>
+      <TextField
+        label="Nom"
+        value={name}
+        onChangeText={setName}
+        autoFocus
+        error={valid ? undefined : 'Le nom ne peut pas être vide.'}
+      />
+      {rename.isError ? (
+        <AppText variant="caption" style={{ color: Colors.danger }}>
+          {rename.error.message}
+        </AppText>
+      ) : null}
+    </Sheet>
+  );
+}
+
 
 const styles = StyleSheet.create({
   toolbar: {

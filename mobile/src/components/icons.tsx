@@ -34,6 +34,7 @@ const PATHS = {
   card: ['M4.4 3.5h15.2a.9.9 0 0 1 .9.9v15.2a.9.9 0 0 1-.9.9H4.4a.9.9 0 0 1-.9-.9V4.4a.9.9 0 0 1 .9-.9', 'M7 7.6h10v6.2H7z'],
   filter: ['M4 6.5h16', 'M7 12h10', 'M10 17.5h4'],
   alert: ['M12 4.2 21.2 19.8H2.8z', 'M12 10v4.1', 'M12 17.3v.01'],
+  pencil: ['M4 20h4.2L19.1 9.1a2 2 0 0 0-2.8-2.8L5.4 17.2 4 20', 'M14.8 7.6l3.4 3.4'],
 } as const;
 
 export type IconName = keyof typeof PATHS;

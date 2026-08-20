@@ -12,10 +12,13 @@ import { AppText, Button, FormField, Segmented, Sheet, TextField } from '@/compo
 import { Colors, Control, Radius, Space } from '@/constants/theme';
 import {
   useCreateRule,
+  useUpdateRule,
   RARITIES,
   RARITY_LABELS,
   type AlertMetric,
   type Rarity,
+  type AlertRule,
+  type NewAlertRule,
 } from '@/lib/alerts';
 import { supabase } from '@/lib/supabase';
 import type { Finish, Folder } from '@/lib/types';
@@ -26,22 +29,45 @@ export function CreateRuleModal({
   visible,
   onClose,
   preset,
+  rule,
 }: {
   visible: boolean;
   onClose: () => void;
   preset?: Preset;
+  /** Règle à modifier. Absente = création.
+   *
+   *  L'état initial est lu une seule fois, au montage : l'appelant doit donc
+   *  poser une `key` distincte par règle, faute de quoi rouvrir la modale sur
+   *  une autre règle garderait les valeurs de la précédente. */
+  rule?: AlertRule | null;
 }) {
+  const editing = rule ?? null;
   const createRule = useCreateRule();
-  const [scope, setScope] = useState<'collection' | 'folder'>('collection');
-  const [folderId, setFolderId] = useState<string | null>(null);
-  const [metric, setMetric] = useState<AlertMetric>('pct_change');
-  const [windowDays, setWindowDays] = useState<1 | 7 | 30>(7);
-  const [direction, setDirection] = useState<'up' | 'down' | 'both'>('both');
-  const [channel, setChannel] = useState<'digest' | 'immediate'>('digest');
-  const [threshold, setThreshold] = useState('10');
+  const updateRule = useUpdateRule();
+  const pending = createRule.isPending || updateRule.isPending;
+  const failure = createRule.error ?? updateRule.error;
+  const [scope, setScope] = useState<'collection' | 'folder'>(
+    editing?.scope === 'folder' ? 'folder' : 'collection'
+  );
+  const [folderId, setFolderId] = useState<string | null>(editing?.folder_id ?? null);
+  const [metric, setMetric] = useState<AlertMetric>(editing?.metric ?? 'pct_change');
+  const [windowDays, setWindowDays] = useState<1 | 7 | 30>(editing?.window_days ?? 7);
+  const [direction, setDirection] = useState<'up' | 'down' | 'both'>(
+    editing?.direction ?? 'both'
+  );
+  const [channel, setChannel] = useState<'digest' | 'immediate'>(
+    editing?.channel ?? 'digest'
+  );
+  const [threshold, setThreshold] = useState(
+    editing?.threshold != null ? String(editing.threshold) : '10'
+  );
+  // Champ vide = aucun plancher, ce qui reproduit le comportement d'avant.
+  const [minPrice, setMinPrice] = useState(
+    editing?.min_price != null ? String(editing.min_price) : ''
+  );
   // Aucune rareté cochée = toutes, ce qui reproduit le comportement d'avant
   // ce filtre. On n'oblige donc personne à choisir.
-  const [rarities, setRarities] = useState<Rarity[]>([]);
+  const [rarities, setRarities] = useState<Rarity[]>(editing?.rarities ?? []);
 
   const folders = useQuery({
     queryKey: ['collection', 'folders-lite'],
@@ -58,6 +84,9 @@ export function CreateRuleModal({
   const thresholdValid = !needsThreshold || (Number.isFinite(parsedThreshold) && parsedThreshold > 0);
   const scopeValid = !!preset || scope === 'collection' || !!folderId;
 
+  const parsedMin = minPrice.trim() === '' ? null : Number(minPrice.replace(',', '.'));
+  const minValid = parsedMin === null || (Number.isFinite(parsedMin) && parsedMin >= 0);
+
   const scopeText = preset
     ? preset.cardName
     : scope === 'collection'
@@ -65,37 +94,46 @@ export function CreateRuleModal({
       : (folders.data?.find((f) => f.id === folderId)?.name ?? 'un dossier');
 
   function submit() {
-    createRule.mutate(
-      {
-        name: preset ? preset.cardName : null,
-        scope: preset ? 'card' : scope,
-        folder_id: !preset && scope === 'folder' ? folderId : null,
-        card_id: preset?.cardId ?? null,
-        finish: preset?.finish ?? null,
-        metric,
-        window_days: windowDays,
-        threshold: needsThreshold ? parsedThreshold : null,
-        direction:
-          metric === 'threshold_above' ? 'up' : metric === 'threshold_below' ? 'down' : direction,
-        channel,
-        rarities: rarities.length > 0 ? rarities : null,
-      },
-      { onSuccess: onClose }
-    );
+    // Typé explicitement : sorti du `mutate`, l'objet perdrait le typage
+    // contextuel et `scope` s'élargirait en `string`.
+    const payload: NewAlertRule = {
+      name: preset ? preset.cardName : null,
+      scope: preset ? 'card' : scope,
+      folder_id: !preset && scope === 'folder' ? folderId : null,
+      card_id: preset?.cardId ?? null,
+      finish: preset?.finish ?? null,
+      metric,
+      window_days: windowDays,
+      threshold: needsThreshold ? parsedThreshold : null,
+      direction:
+        metric === 'threshold_above' ? 'up' : metric === 'threshold_below' ? 'down' : direction,
+      channel,
+      rarities: rarities.length > 0 ? rarities : null,
+      min_price: parsedMin,
+    };
+
+    if (editing) updateRule.mutate({ id: editing.id, ...payload }, { onSuccess: onClose });
+    else createRule.mutate(payload, { onSuccess: onClose });
   }
 
   return (
     <Sheet
       visible={visible}
       onClose={onClose}
-      title={preset ? `Alerte · ${preset.cardName}` : 'Nouvelle alerte'}
+      title={
+        editing
+          ? 'Modifier l’alerte'
+          : preset
+            ? `Alerte · ${preset.cardName}`
+            : 'Nouvelle alerte'
+      }
       footer={
         <Button
-          label="Créer l'alerte"
+          label={editing ? 'Enregistrer' : "Créer l'alerte"}
           icon="check"
           onPress={submit}
-          loading={createRule.isPending}
-          disabled={!thresholdValid || !scopeValid}
+          loading={pending}
+          disabled={!thresholdValid || !scopeValid || !minValid}
         />
       }>
       <View style={styles.summary}>
@@ -109,6 +147,7 @@ export function CreateRuleModal({
             threshold: parsedThreshold,
             channel,
             rarities,
+            minPrice: parsedMin,
           })}
         </AppText>
       </View>
@@ -241,6 +280,24 @@ export function CreateRuleModal({
         />
       )}
 
+      {/* Le plancher porte sur le prix COURANT de la carte, pas sur son
+          mouvement. Mesuré le 2026-08-20 : les 16 cartes ayant pris 50 % ou
+          plus dans la journée valaient toutes moins de 20 centimes. Sans
+          plancher, une règle en pourcentage ne parle que de monnaie. */}
+      <TextField
+        label="Prix plancher (€) — optionnel"
+        value={minPrice}
+        onChangeText={setMinPrice}
+        keyboardType="decimal-pad"
+        placeholder="Aucun"
+        error={minValid ? undefined : 'Entre un nombre positif, ou laisse vide.'}
+      />
+      <AppText variant="caption">
+        {parsedMin === null
+          ? 'Sans plancher, les cartes à quelques centimes déclencheront la plupart des alertes.'
+          : `Seules les cartes valant au moins ${String(parsedMin).replace('.', ',')} € aujourd’hui compteront.`}
+      </AppText>
+
       <FormField label="Notification">
         <Segmented
           options={[
@@ -252,9 +309,9 @@ export function CreateRuleModal({
         />
       </FormField>
 
-      {createRule.isError ? (
+      {failure ? (
         <AppText variant="caption" style={{ color: Colors.danger }}>
-          {createRule.error.message}
+          {failure.message}
         </AppText>
       ) : null}
     </Sheet>
@@ -277,6 +334,7 @@ function summarise({
   threshold,
   channel,
   rarities,
+  minPrice,
 }: {
   scopeText: string;
   metric: AlertMetric;
@@ -285,6 +343,7 @@ function summarise({
   threshold: number;
   channel: 'digest' | 'immediate';
   rarities: Rarity[];
+  minPrice: number | null;
 }): string {
   const amount = Number.isFinite(threshold) ? threshold.toString().replace('.', ',') : '…';
   const how =
@@ -297,16 +356,21 @@ function summarise({
       ? 'carte'
       : rarities.map((r) => RARITY_LABELS[r].toLowerCase()).join(' ou ');
 
+  // Le plancher se glisse dans la phrase : c'est la clause qui explique
+  // pourquoi la règle ignorera l'essentiel des mouvements.
+  const floor =
+    minPrice === null ? '' : ` valant au moins ${String(minPrice).replace('.', ',')} €`;
+
   if (metric === 'corridor_breakout')
-    return `On te prévient ${how} quand une ${kinds} de ${scopeText} sort de son couloir de prix habituel.`;
+    return `On te prévient ${how} quand une ${kinds} de ${scopeText}${floor} sort de son couloir de prix habituel.`;
   if (metric === 'threshold_above')
-    return `On te prévient ${how} quand une ${kinds} de ${scopeText} atteint ${amount} €.`;
+    return `On te prévient ${how} quand une ${kinds} de ${scopeText}${floor} atteint ${amount} €.`;
   if (metric === 'threshold_below')
-    return `On te prévient ${how} quand une ${kinds} de ${scopeText} descend à ${amount} €.`;
+    return `On te prévient ${how} quand une ${kinds} de ${scopeText}${floor} descend à ${amount} €.`;
 
   const move =
     direction === 'up' ? 'monte' : direction === 'down' ? 'baisse' : 'bouge';
-  return `On te prévient ${how} quand une ${kinds} de ${scopeText} ${move} de plus de ${amount} % sur ${windowDays} jour${windowDays > 1 ? 's' : ''}.`;
+  return `On te prévient ${how} quand une ${kinds} de ${scopeText}${floor} ${move} de plus de ${amount} % sur ${windowDays} jour${windowDays > 1 ? 's' : ''}.`;
 }
 
 const styles = StyleSheet.create({

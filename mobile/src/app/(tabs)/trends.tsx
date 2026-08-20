@@ -37,13 +37,41 @@ const WINDOW_LABEL: Record<MoverWindow, string> = {
   30: '1 mois',
 };
 
+/** Paliers de prix plancher.
+ *
+ *  Des paliers plutot qu'un champ libre : on choisit un plancher d'un pouce,
+ *  en marchant, pas en tapant « 0,50 » au clavier. Les valeurs viennent de
+ *  l'usage reel — on ne vend pas une commune sous 50 centimes, ni une rare
+ *  sous un ou deux euros.
+ *
+ *  Le plancher porte sur le prix COURANT : ce qui compte est ce que la carte
+ *  vaut aujourd'hui, pas ce qu'elle valait avant de monter. */
+const FLOORS = [
+  { value: '0', label: 'Tout' },
+  { value: '0.5', label: '50 c' },
+  { value: '1', label: '1 €' },
+  { value: '2', label: '2 €' },
+  { value: '5', label: '5 €' },
+] as const;
+
+type Floor = (typeof FLOORS)[number]['value'];
+
 export default function TrendsScreen() {
   const router = useRouter();
   const [windowDays, setWindowDays] = useState<MoverWindow>(7);
   const [order, setOrder] = useState<MoverOrder>('pct');
+  const [floor, setFloor] = useState<Floor>('0');
 
-  const risers = usePriceMovers(windowDays, order, 'up');
-  const fallers = usePriceMovers(windowDays, order, 'down');
+  // '0' vaut « aucun plancher » : on l'envoie en `null` plutot qu'en 0, pour
+  // que le SQL saute le filtre au lieu de comparer a zero.
+  const minPrice = floor === '0' ? null : Number(floor);
+  const floorLabel =
+    minPrice === null
+      ? 'Toute la collection'
+      : `Cartes dès ${String(minPrice).replace('.', ',')} €`;
+
+  const risers = usePriceMovers(windowDays, order, 'up', minPrice);
+  const fallers = usePriceMovers(windowDays, order, 'down', minPrice);
 
   const loading = risers.isLoading || fallers.isLoading;
   const refreshing = risers.isRefetching || fallers.isRefetching;
@@ -66,7 +94,7 @@ export default function TrendsScreen() {
     <Screen>
       <AppBar
         title="Tendances"
-        subtitle={`Toute la collection · ${WINDOW_LABEL[windowDays]}`}
+        subtitle={`${floorLabel} · ${WINDOW_LABEL[windowDays]}`}
       />
 
       <View style={styles.controls}>
@@ -88,6 +116,11 @@ export default function TrendsScreen() {
           value={order}
           onChange={setOrder}
         />
+        <Segmented
+          options={FLOORS.map((f) => ({ value: f.value, label: f.label }))}
+          value={floor}
+          onChange={setFloor}
+        />
       </View>
 
       {loading ? (
@@ -104,7 +137,11 @@ export default function TrendsScreen() {
         <EmptyState
           icon="chart"
           title="Rien à signaler"
-          hint={`Rien à comparer sur ${WINDOW_LABEL[windowDays]}. Une fenêtre a besoin d’un relevé aussi ancien qu’elle : tant que l’historique est plus court, elle reste vide, même si les prix bougent. Essaie une fenêtre plus courte.`}
+          hint={
+            minPrice !== null
+              ? `Aucune carte d'au moins ${String(minPrice).replace('.', ',')} € n'a bougé sur ${WINDOW_LABEL[windowDays]}. Baisse le plancher pour voir les mouvements plus modestes.`
+              : `Rien à comparer sur ${WINDOW_LABEL[windowDays]}. Une fenêtre a besoin d’un relevé aussi ancien qu’elle : tant que l’historique est plus court, elle reste vide, même si les prix bougent. Essaie une fenêtre plus courte.`
+          }
         />
       ) : (
         <FlatList

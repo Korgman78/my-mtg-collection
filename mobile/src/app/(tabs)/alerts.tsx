@@ -43,6 +43,7 @@ export default function AlertsScreen() {
   const markSeen = useMarkAlertsSeen();
   const [creating, setCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AlertRule | null>(null);
+  const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const folderNames = useAlertFolderNames();
 
   // Marque tout comme lu dès l'ouverture de l'écran.
@@ -100,6 +101,7 @@ export default function AlertsScreen() {
                     rule={rule}
                     folderNames={folderNames}
                     onToggle={(enabled) => toggleRule.mutate({ id: rule.id, enabled })}
+                    onEdit={() => setEditingRule(rule)}
                     onDelete={() => setPendingDelete(rule)}
                   />
                 ))}
@@ -128,6 +130,15 @@ export default function AlertsScreen() {
 
       <CreateRuleModal visible={creating} onClose={() => setCreating(false)} />
 
+      {/* `key` distincte par règle : la modale lit son état initial au montage,
+          sans elle on rouvrirait la suivante avec les valeurs de la précédente. */}
+      <CreateRuleModal
+        key={editingRule?.id ?? 'aucune'}
+        visible={editingRule !== null}
+        rule={editingRule}
+        onClose={() => setEditingRule(null)}
+      />
+
       <ConfirmDialog
         visible={pendingDelete !== null}
         title="Supprimer cette alerte ?"
@@ -153,11 +164,13 @@ function RuleCard({
   rule,
   folderNames,
   onToggle,
+  onEdit,
   onDelete,
 }: {
   rule: AlertRule;
   folderNames: Record<string, string>;
   onToggle: (enabled: boolean) => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const title = rule.name ?? ruleTitle(rule, folderNames);
@@ -179,6 +192,12 @@ function RuleCard({
           accessibilityLabel={`Activer la règle ${title}`}
           trackColor={{ false: Colors.surfaceHover, true: Colors.accentSoft }}
           thumbColor={rule.enabled ? Colors.accent : Colors.textTertiary}
+        />
+        <IconButton
+          name="pencil"
+          label={`Modifier la règle ${title}`}
+          onPress={onEdit}
+          size="sm"
         />
         <IconButton
           name="trash"

@@ -182,16 +182,19 @@ export type PriceMover = {
 export function usePriceMovers(
   windowDays: MoverWindow,
   order: MoverOrder,
-  direction: 'up' | 'down'
+  direction: 'up' | 'down',
+  /** Prix plancher en euros. `null` = pas de plancher. */
+  minPrice: number | null = null
 ) {
   return useQuery({
-    queryKey: ['collection', 'movers', windowDays, order, direction],
+    queryKey: ['collection', 'movers', windowDays, order, direction, minPrice],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('collection_price_movers', {
         window_days: windowDays,
         order_by: order,
         direction,
         max_results: 12,
+        min_price: minPrice,
       });
       if (error) throw new Error(error.message);
       return (data ?? []) as PriceMover[];
@@ -344,6 +347,23 @@ export function useCreateFolder() {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) throw new Error('Non connecté');
       throwIfError(await supabase.from('folders').insert({ ...input, user_id: user.id }));
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
+  });
+}
+
+/** Renommer un dossier.
+ *
+ *  Le nom est la seule chose qu'on se trompe vraiment en créant un dossier —
+ *  une faute de frappe sur « MKM » se corrigeait jusqu'ici en supprimant le
+ *  dossier, donc en perdant les cartes qu'il contenait. */
+export function useRenameFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const clean = name.trim();
+      if (!clean) throw new Error('Le nom ne peut pas être vide.');
+      throwIfError(await supabase.from('folders').update({ name: clean }).eq('id', id));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection'] }),
   });

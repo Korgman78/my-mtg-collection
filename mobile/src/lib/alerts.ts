@@ -22,6 +22,8 @@ export type AlertRule = {
   channel: 'digest' | 'immediate';
   /** Raretés surveillées. `null` = toutes. */
   rarities: Rarity[] | null;
+  /** Prix courant minimal pour qu'un mouvement compte. `null` = aucun plancher. */
+  min_price: number | null;
   enabled: boolean;
   created_at: string;
 };
@@ -67,6 +69,7 @@ export type NewAlertRule = {
   direction: 'up' | 'down' | 'both';
   channel: 'digest' | 'immediate';
   rarities?: Rarity[] | null;
+  min_price?: number | null;
 };
 
 function throwIfError<T>(res: { data: T | null; error: { message: string } | null }): T {
@@ -129,6 +132,20 @@ export function useCreateRule() {
   });
 }
 
+/** Modification d'une règle existante.
+ *
+ *  Sans elle, corriger un seuil imposait de supprimer puis recréer — ce qui
+ *  perdait au passage l'historique d'événements rattaché à la règle. */
+export function useUpdateRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...rule }: NewAlertRule & { id: string }) => {
+      throwIfError(await supabase.from('alert_rules').update(rule).eq('id', id));
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+}
+
 export function useToggleRule() {
   const qc = useQueryClient();
   return useMutation({
@@ -176,5 +193,9 @@ export function describeRule(rule: AlertRule, folderName?: string, cardName?: st
       ? ` · ${rule.rarities.map((r) => RARITY_LABELS[r] ?? r).join(', ').toLowerCase()}`
       : '';
 
-  return `${scope}${rarities} · ${metric}${direction} · ${channel}`;
+  // Le plancher est une information de premier plan : c'est lui qui explique
+  // pourquoi une règle reste muette sur les cartes à deux centimes.
+  const floor = rule.min_price ? ` · dès ${String(rule.min_price).replace('.', ',')} €` : '';
+
+  return `${scope}${rarities}${floor} · ${metric}${direction} · ${channel}`;
 }
