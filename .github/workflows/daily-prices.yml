@@ -55,7 +55,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
+          # On indexe AVANT de rebaser. L'archive du jour peut deja exister et
+          # etre suivie — run relance, ou ingestion lancee a la main — auquel
+          # cas la reecrire produit une modification non indexee, et
+          # `git pull --rebase` refuse de tourner sur un arbre sale :
+          # « cannot pull with rebase: You have unstaged changes ».
           git add archives/
           git diff --cached --quiet || git commit -m "prices: archive $(date -u +%F)"
+          git pull --rebase
           git push
