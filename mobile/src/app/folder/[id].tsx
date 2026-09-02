@@ -37,7 +37,7 @@ import {
   type SetBulkPhase,
   type SortKey,
 } from '@/lib/collection';
-import { formatEur } from '@/lib/format';
+import { formatEur, normalize } from '@/lib/format';
 import { goBack } from '@/lib/nav';
 import { countSetBulk, fetchSet } from '@/lib/scryfall';
 import { priceForFinish, type Folder } from '@/lib/types';
@@ -49,6 +49,22 @@ import { useDebounced } from '@/lib/use-debounced';
  *  fiche : c'est ce qu'on veut quand on range un lot. */
 type ViewMode = 'grid' | 'list';
 
+/** En dessous de ce nombre de références, chercher n'a pas de sens : tout
+ *  tient sous le pouce. Le seuil porte sur le contenu du dossier, jamais sur
+ *  le nombre de résultats — sinon le champ disparaîtrait sous les doigts dès
+ *  que la recherche devient sélective. */
+const SEARCH_FROM = 12;
+
+/** Ce sur quoi porte la recherche dans un dossier.
+ *
+ *  Le nom d'abord, mais aussi l'édition et le numéro de collection : quand on
+ *  cherche une carte précise parmi deux cents, « mkm 123 » se tape plus vite
+ *  qu'un nom dont on n'est pas sûr de l'orthographe. Tout passe par
+ *  `normalize`, donc « edition » trouve « Édition ». */
+function searchable(item: FolderItem): string {
+  return normalize(`${item.card.name} ${item.card.set_code} ${item.card.collector_number}`);
+}
+
 export default function FolderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -58,18 +74,27 @@ export default function FolderScreen() {
   const [mode, setMode] = useState<ViewMode>('grid');
   const [sort, setSort] = useState<SortKey>('name');
   const [sorting, setSorting] = useState(false);
+  const [search, setSearch] = useState('');
   const setQuantity = useSetItemQuantity();
 
   if (isLoading) return <FolderSkeleton onBack={() => goBack('/')} />;
   if (!data) return <ErrorState detail={error?.message} onRetry={() => refetch()} />;
   const { folder, items: unsorted } = data;
-  const items = sortItems(unsorted, sort);
+  const all = sortItems(unsorted, sort);
 
-  const totalValue = items.reduce((sum, item) => {
+  // La recherche filtre la liste, pas les totaux : voir « 12 exemplaires »
+  // parce qu'on cherche une carte ferait douter de ce qu'on possède. Les
+  // chiffres du dossier restent ceux du dossier, et l'en-tête annonce le
+  // nombre de résultats pendant qu'on cherche.
+  const needle = normalize(search);
+  const searching = needle.length > 0;
+  const items = searching ? all.filter((item) => searchable(item).includes(needle)) : all;
+
+  const totalValue = all.reduce((sum, item) => {
     const price = item.stats ? priceForFinish(item.stats, item.finish) : null;
     return sum + (price ?? 0) * item.quantity;
   }, 0);
-  const totalCopies = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalCopies = all.reduce((sum, item) => sum + item.quantity, 0);
 
   const openAddCard = () =>
     router.push({ pathname: '/add-card', params: { folderId: folder.id } });
@@ -84,7 +109,11 @@ export default function FolderScreen() {
     <Screen>
       <AppBar
         title={folder.name}
-        subtitle={`${totalCopies} exemplaire${totalCopies > 1 ? 's' : ''} · ${items.length} référence${items.length > 1 ? 's' : ''} · ${formatEur(totalValue)}`}
+        subtitle={
+          searching
+            ? `${items.length} résultat${items.length > 1 ? 's' : ''} sur ${all.length} référence${all.length > 1 ? 's' : ''}`
+            : `${totalCopies} exemplaire${totalCopies > 1 ? 's' : ''} · ${all.length} référence${all.length > 1 ? 's' : ''} · ${formatEur(totalValue)}`
+        }
         onBack={() => goBack('/')}
         right={
           <IconButton
@@ -115,7 +144,34 @@ export default function FolderScreen() {
         />
       </View>
 
-      {items.length > 0 ? (
+      {/* Chercher DANS le dossier — à ne pas confondre avec « Chercher »
+          ci-dessus, qui ajoute une carte depuis Scryfall. L'un fouille ce
+          qu'on possède, l'autre le monde entier. */}
+      {all.length >= SEARCH_FROM ? (
+        <View style={styles.searchRow}>
+          <TextField
+            icon="search"
+            placeholder="Chercher dans ce dossier"
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            right={
+              search ? (
+                <IconButton
+                  name="close"
+                  label="Effacer la recherche"
+                  size="sm"
+                  onPress={() => setSearch('')}
+                />
+              ) : undefined
+            }
+          />
+        </View>
+      ) : null}
+
+      {all.length > 0 ? (
         <View style={styles.modeRow}>
           <View style={{ flex: 1 }}>
             <Segmented
@@ -151,12 +207,21 @@ export default function FolderScreen() {
         refreshing={isRefetching}
         onRefresh={refetch}
         ListEmptyComponent={
-          <EmptyState
-            icon="card"
-            title="Dossier vide"
-            hint="Scanne une carte, cherche-la par son nom, ou ajoute d'un coup toutes les communes et peu communes d'un set."
-            action={{ label: 'Scanner une carte', icon: 'card', onPress: openScanner }}
-          />
+          searching ? (
+            <EmptyState
+              icon="search"
+              title="Aucune carte ne correspond"
+              hint={`Rien ne porte « ${search.trim()} » dans ce dossier. La recherche ignore les accents et la casse, et accepte aussi l'édition ou le numéro de collection.`}
+              action={{ label: 'Effacer la recherche', onPress: () => setSearch('') }}
+            />
+          ) : (
+            <EmptyState
+              icon="card"
+              title="Dossier vide"
+              hint="Scanne une carte, cherche-la par son nom, ou ajoute d'un coup toutes les communes et peu communes d'un set."
+              action={{ label: 'Scanner une carte', icon: 'card', onPress: openScanner }}
+            />
+          )
         }
         renderItem={({ item }) =>
           mode === 'grid' ? (
@@ -561,6 +626,7 @@ const styles = StyleSheet.create({
     paddingBottom: Space.md,
   },
   setCard: { gap: Space.xs, alignItems: 'flex-start', paddingVertical: Space.lg },
+  searchRow: { paddingHorizontal: Space.lg, paddingBottom: Space.md },
   modeRow: {
     flexDirection: 'row',
     alignItems: 'center',

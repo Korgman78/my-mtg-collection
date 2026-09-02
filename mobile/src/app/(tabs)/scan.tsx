@@ -10,6 +10,7 @@
 //     leur illustration, et c'est l'œil du joueur qui trance. Un ajout faux
 //     et silencieux dans une collection coûte bien plus cher qu'un choix.
 
+import { useQuery } from '@tanstack/react-query';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -37,10 +38,13 @@ import {
   Screen,
   Segmented,
   Sheet,
+  Skeleton,
+  Stepper,
   Surface,
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useAddScannedCard, useFoldersLite, useHashedSets } from '@/lib/collection';
+import { formatEur } from '@/lib/format';
 import {
   CARD_ASPECT,
   confidenceOf,
@@ -49,6 +53,7 @@ import {
   matchPhoto,
   type ScanMatch,
 } from '@/lib/scan';
+import { fetchCardsByIds, type ScryfallCard } from '@/lib/scryfall';
 
 type Stage =
   | { step: 'idle' }
@@ -63,6 +68,7 @@ export default function ScanScreen() {
   const [stage, setStage] = useState<Stage>({ step: 'idle' });
   const [added, setAdded] = useState<string | null>(null);
   const [foil, setFoil] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
   // Taille réelle de l'aperçu à l'écran. Sans elle, impossible de savoir
   // quelle portion de la photo le joueur voyait : l'aperçu est en « cover ».
@@ -206,11 +212,19 @@ export default function ScanScreen() {
     }
   }
 
-  function addMatch(match: ScanMatch) {
+  function addMatch(match: ScanMatch, printing?: ScryfallCard) {
     const folder = targetFolder;
     if (!folder) return;
     addScanned.mutate(
-      { folderId: folder, cardId: match.card_id, finish: foil ? 'foil' : 'nonfoil' },
+      {
+        folderId: folder,
+        cardId: match.card_id,
+        finish: foil ? 'foil' : 'nonfoil',
+        quantity,
+        // L'impression vient de l'affichage du prix : la mutation n'a plus
+        // besoin de la redemander à Scryfall pour l'enregistrer.
+        card: printing,
+      },
       {
         onSuccess: (result) => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -219,9 +233,13 @@ export default function ScanScreen() {
           // Le finish retenu est celui que la mutation a RÉELLEMENT écrit :
           // une impression qui n'existe pas en foil retombe sur ce qu'elle a.
           const suffixe = result.finish === 'nonfoil' ? '' : ' · ✦ foil';
-          setAdded(
-            (result.merged ? `${match.name} ×${result.quantity}` : match.name) + suffixe
-          );
+          const total = result.merged || quantity > 1 ? ` ×${result.quantity}` : '';
+          setAdded(match.name + total + suffixe);
+          // La quantité retombe à 1, contrairement au choix foil qui, lui,
+          // reste d'un scan à l'autre. Un « ×4 » oublié ajouterait quatre
+          // exemplaires de chaque carte suivante sans rien dire — le genre
+          // d'erreur qu'on ne découvre qu'une fois la pile entière saisie.
+          setQuantity(1);
           setStage({ step: 'idle' });
         },
       }
@@ -394,6 +412,8 @@ export default function ScanScreen() {
         onPick={addMatch}
         foil={foil}
         onFoilChange={setFoil}
+        quantity={quantity}
+        onQuantityChange={setQuantity}
         onClose={() => setStage({ step: 'idle' })}
       />
     </Screen>
@@ -452,19 +472,59 @@ function CropPreview({ uri }: { uri: string | null }) {
   );
 }
 
+const FINISH_LABEL: Record<string, string> = {
+  nonfoil: 'normale',
+  foil: 'foil',
+  etched: 'etched',
+};
+
+/** Le prix du jour d'une impression, dans la finition choisie.
+ *
+ *  Une impression n'existe pas toujours dans les deux finitions. Plutôt que
+ *  d'afficher « — » sur une carte qui a bel et bien un prix, on montre celui
+ *  de la finition réellement disponible et on le DIT — c'est d'ailleurs
+ *  celle-là que l'ajout enregistrera, `useAddCard` ramenant le finish à ce
+ *  que l'impression propose. Le prix affiché est donc toujours celui de la
+ *  ligne qu'on s'apprête à créer. */
+function priceOf(
+  card: ScryfallCard | undefined,
+  foil: boolean
+): { text: string; note: string | null } {
+  if (!card) return { text: '—', note: null };
+
+  const finishes = card.finishes ?? [];
+  const wanted = foil ? 'foil' : 'nonfoil';
+  const used = finishes.includes(wanted) ? wanted : (finishes[0] ?? 'nonfoil');
+  const raw =
+    used === 'foil'
+      ? card.prices.eur_foil
+      : used === 'etched'
+        ? (card.prices.eur_etched ?? card.prices.eur_foil)
+        : card.prices.eur;
+
+  return {
+    text: raw ? formatEur(Number(raw)) : '—',
+    note: used === wanted ? null : `en ${FINISH_LABEL[used] ?? used}`,
+  };
+}
+
 function ResultSheet({
   stage,
   pending,
   onPick,
   foil,
   onFoilChange,
+  quantity,
+  onQuantityChange,
   onClose,
 }: {
   stage: Stage;
   pending: boolean;
-  onPick: (m: ScanMatch) => void;
+  onPick: (m: ScanMatch, printing?: ScryfallCard) => void;
   foil: boolean;
   onFoilChange: (v: boolean) => void;
+  quantity: number;
+  onQuantityChange: (v: number) => void;
   onClose: () => void;
 }) {
   const visible = stage.step === 'results' || stage.step === 'error';
@@ -472,6 +532,19 @@ function ResultSheet({
   const previewUri = stage.step === 'results' ? stage.previewUri : null;
   const nearest = stage.step === 'results' ? stage.nearest : [];
   const confidence = confidenceOf(matches);
+
+  // Les prix du jour des candidats, en une seule requête.
+  //
+  // Ils ne peuvent pas venir de la base : `card_hashes` ne porte que
+  // l'identité des cartes, et c'est délibéré — on doit pouvoir reconnaître
+  // une carte qu'on ne possède pas, donc qui n'a ni ligne dans `cards` ni
+  // relevé de prix. C'est Scryfall qui répond, comme à l'ajout manuel.
+  const ids = matches.map((m) => m.card_id);
+  const printings = useQuery({
+    queryKey: ['scryfall', 'scan-prices', ids],
+    enabled: visible && ids.length > 0,
+    queryFn: () => fetchCardsByIds(ids),
+  });
 
   return (
     <Sheet
@@ -549,36 +622,75 @@ function ResultSheet({
             onChange={(v) => onFoilChange(v === 'foil')}
           />
 
-          {matches.map((m, i) => (
-            <Pressable
-              key={m.card_id}
-              accessibilityRole="button"
-              accessibilityLabel={`Ajouter ${m.name}, édition ${m.set_code.toUpperCase()}`}
-              disabled={pending}
-              onPress={() => onPick(m)}
-              style={({ pressed }) => [
-                styles.matchRow,
-                i === 0 && styles.matchRowBest,
-                pressed && { opacity: 0.7 },
-              ]}>
-              <Image
-                source={{ uri: m.image_small ?? undefined }}
-                style={styles.matchThumb}
-                contentFit="cover"
-                transition={120}
-              />
-              <View style={{ flex: 1, gap: 2 }}>
-                <AppText variant="heading" numberOfLines={1}>
-                  {m.name}
-                </AppText>
-                <AppText variant="caption" numberOfLines={1}>
-                  {m.set_code.toUpperCase()} · #{m.collector_number}
-                  {m.rarity ? ` · ${m.rarity}` : ''}
-                </AppText>
-              </View>
-              {i === 0 ? <Pill label="Meilleur" tone="accent" /> : null}
-            </Pressable>
-          ))}
+          {/* Le nombre d'exemplaires se règle AVANT de désigner la carte :
+              c'est le même geste que pour la finition, et ça évite d'ajouter
+              une carte puis de revenir corriger la quantité dans le dossier.
+              Il retombe à 1 après chaque ajout. */}
+          <View style={styles.quantityRow}>
+            <AppText variant="overline">Exemplaires</AppText>
+            <Stepper value={quantity} onChange={onQuantityChange} />
+          </View>
+
+          {matches.map((m, i) => {
+            const printing = printings.data?.get(m.card_id);
+            const price = priceOf(printing, foil);
+            return (
+              <Pressable
+                key={m.card_id}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  `Ajouter ${quantity} ${m.name}, édition ${m.set_code.toUpperCase()}` +
+                  (price.text === '—' ? '' : `, ${price.text}`)
+                }
+                disabled={pending}
+                onPress={() => onPick(m, printing)}
+                style={({ pressed }) => [
+                  styles.matchRow,
+                  i === 0 && styles.matchRowBest,
+                  pressed && { opacity: 0.7 },
+                ]}>
+                <Image
+                  source={{ uri: m.image_small ?? undefined }}
+                  style={styles.matchThumb}
+                  contentFit="cover"
+                  transition={120}
+                />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <AppText variant="heading" numberOfLines={1}>
+                    {m.name}
+                  </AppText>
+                  <AppText variant="caption" numberOfLines={1}>
+                    {m.set_code.toUpperCase()} · #{m.collector_number}
+                    {m.rarity ? ` · ${m.rarity}` : ''}
+                  </AppText>
+                </View>
+
+                {/* Le prix prend la place où se trouvait la pastille
+                    « Meilleur » : le meilleur candidat reste signalé par son
+                    encadrement doré, et le prix est ce qu'on vient lire. */}
+                <View style={styles.matchRight}>
+                  {printings.isPending ? (
+                    <Skeleton width={52} height={14} />
+                  ) : (
+                    <AppText variant="price">{price.text}</AppText>
+                  )}
+                  {price.note ? (
+                    <AppText variant="caption" style={styles.priceNote}>
+                      {price.note}
+                    </AppText>
+                  ) : i === 0 ? (
+                    <Pill label="Meilleur" tone="accent" />
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+
+          {printings.isError ? (
+            <AppText variant="caption" style={{ color: Colors.danger }}>
+              Prix indisponibles : {printings.error.message}. L&apos;ajout, lui, fonctionne.
+            </AppText>
+          ) : null}
 
           <AppText variant="caption">
             Aucune ne correspond ? Ferme et recadre : c&apos;est presque toujours le cadrage.
@@ -701,4 +813,7 @@ const styles = StyleSheet.create({
   },
   matchRowBest: { borderColor: Colors.accentBorder },
   matchThumb: { width: 44, height: 61, borderRadius: Radius.sm, backgroundColor: Colors.surface },
+  matchRight: { alignItems: 'flex-end', gap: Space.xs, minWidth: 62 },
+  priceNote: { color: Colors.textTertiary },
+  quantityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 });

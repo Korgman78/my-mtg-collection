@@ -327,13 +327,22 @@ export function useHashedSets() {
 export function useAddScannedCard() {
   const addCard = useAddCard();
   return useMutation({
-    mutationFn: async (input: { folderId: string; cardId: string; finish: Finish }) => {
-      const card = await fetchCardById(input.cardId);
+    mutationFn: async (input: {
+      folderId: string;
+      cardId: string;
+      finish: Finish;
+      quantity: number;
+      /** L'impression que l'écran a déjà chargée pour afficher son prix.
+       *  Sans elle on la redemanderait à Scryfall au moment de confirmer,
+       *  c'est-à-dire précisément à l'instant où l'attente se voit. */
+      card?: ScryfallCard;
+    }) => {
+      const card = input.card ?? (await fetchCardById(input.cardId));
       const result = await addCard.mutateAsync({
         folderId: input.folderId,
         card,
         finish: input.finish,
-        quantity: 1,
+        quantity: input.quantity,
       });
       return { card, ...result };
     },

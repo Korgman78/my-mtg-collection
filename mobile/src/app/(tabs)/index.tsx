@@ -26,7 +26,7 @@ import {
 } from '@/components/ui';
 import { Colors, FolderColors, Radius, Space } from '@/constants/theme';
 import { useCreateFolder, useDashboard, useDeleteFolder, type DashboardData } from '@/lib/collection';
-import { formatEur } from '@/lib/format';
+import { formatEur, normalize } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 type FolderEntry = DashboardData['folders'][number];
@@ -36,22 +36,6 @@ type FolderEntry = DashboardData['folders'][number];
  *  de résultats — sinon le champ disparaîtrait sous les doigts dès que le
  *  filtre devient sélectif. */
 const FILTER_FROM = 5;
-
-/** Comparaison souple : sans accents, sans casse.
- *
- *  « Édition » doit sortir sur « edition ». Sur un clavier de téléphone,
- *  personne ne va chercher l'accent pour filtrer une liste.
- *
- *  U+0300–U+036F est la plage des diacritiques combinants, que la
- *  décomposition NFD isole des lettres. On l'écrit ainsi plutôt qu'avec
- *  `\p{Diacritic}` : les classes Unicode ne sont pas acquises sur Hermes. */
-function normalize(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
 
 export default function DashboardScreen() {
   const router = useRouter();

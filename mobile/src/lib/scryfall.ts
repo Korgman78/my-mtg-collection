@@ -75,6 +75,31 @@ export async function fetchCardById(id: string): Promise<ScryfallCard> {
   return (await res.json()) as ScryfallCard;
 }
 
+/** Plusieurs impressions d'un coup, par leurs identifiants.
+ *
+ *  Endpoint `/cards/collection` : une seule requête pour jusqu'à 75 cartes,
+ *  là où `fetchCardById` en demanderait une par carte. Le scanner propose
+ *  jusqu'à cinq candidats et veut le prix de chacun — cinq allers-retours se
+ *  verraient à l'écran, et Scryfall demande 120 ms entre deux requêtes.
+ *
+ *  Renvoie une table id → impression plutôt qu'un tableau : Scryfall ne
+ *  garantit pas l'ordre, et il écarte silencieusement les identifiants qu'il
+ *  ne connaît pas (`not_found`). Chercher par clé évite de croire qu'on lit
+ *  le prix d'une carte alors qu'on lit celui de la suivante. */
+export async function fetchCardsByIds(ids: string[]): Promise<Map<string, ScryfallCard>> {
+  if (ids.length === 0) return new Map();
+
+  const res = await fetch(`${BASE}/cards/collection`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifiers: ids.slice(0, 75).map((id) => ({ id })) }),
+  });
+  if (!res.ok) throw new Error(`Scryfall a répondu ${res.status}.`);
+
+  const json = await res.json();
+  return new Map(((json.data ?? []) as ScryfallCard[]).map((card) => [card.id, card]));
+}
+
 /* -------------------------------------------------------------------------- */
 /* Bloc de set                                                                 */
 /* -------------------------------------------------------------------------- */
