@@ -1,0 +1,32 @@
+# Ce qui ne monte pas sur le serveur de build EAS.
+#
+# Ce fichier est à la RACINE, et c'est le point important : EAS archive tout
+# le dépôt, pas seulement `mobile/`. Sans lui, les archives de prix
+# quotidiennes partaient avec — 40 Mo de CSV compressés, croissant de 2 à
+# 3 Mo par jour, dont un build Android n'a évidemment aucun usage.
+#
+# Symptôme observé le 2026-09-02 : l'upload mourait à mi-chemin sur un
+# « 408 Request Timeout », le proxy d'entreprise ne tenant pas un transfert
+# de cette taille. Sans ce fichier, le problème serait revenu de plus en plus
+# souvent, l'archive grossissant d'un fichier par nuit.
+#
+# ⚠️ `.easignore` REMPLACE `.gitignore` pour décider quoi téléverser : tout ce
+# que `.gitignore` excluait doit être redit ici, sinon ça repart dans
+# l'archive. C'est le piège classique de ce fichier.
+
+node_modules/
+.env
+.env.*
+*.log
+.DS_Store
+
+# QR de développement, régénérés par `npm run qr`.
+expo-go-*.png
+grimoire-*.png
+
+# Aperçu du mail, régénéré par `send-digest.mjs --preview`.
+apercu-digest.html
+
+# Les archives de prix. Elles servent au backfill (`npm run backfill`) et à
+# rien d'autre ; le build n'en lit pas une ligne.
+archives/
