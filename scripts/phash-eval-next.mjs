@@ -214,9 +214,10 @@ async function main() {
       'D reel'.padStart(9) +
       'E reel 2x2'.padStart(12) +
       'F combine'.padStart(11) +
-      '   detect.'
+      'detect.'.padStart(9) +
+      '   dist. A / D'
   );
-  console.log('-'.repeat(70));
+  console.log('-'.repeat(85));
 
   for (const [label, p] of CASES) {
     let okA = 0;
@@ -226,7 +227,7 @@ async function main() {
     let okF = 0;
     let okFound = 0;
     let dA = 0;
-    let dB = 0;
+    let dD = 0;
 
     for (const { ref, img } of originals) {
       const degraded = glare(tilt(img, p.tiltAmt), p.glareAmt);
@@ -285,7 +286,7 @@ async function main() {
       if (e.win) okE++;
       if (f.win) okF++;
       dA += a.dTrue;
-      dB += d.dTrue;
+      dD += d.dTrue;
     }
 
     const n = originals.length;
@@ -295,8 +296,9 @@ async function main() {
         `${okB}/${n}`.padStart(11) +
         `${okD}/${n}`.padStart(9) +
         `${okE}/${n}`.padStart(12) +
-        `${okFound}/${n}`.padStart(10) +
-        `   ${(dA / n).toFixed(1)} / ${(dB / n).toFixed(1)}`
+        `${okF}/${n}`.padStart(11) +
+        `${okFound}/${n}`.padStart(9) +
+        `   ${(dA / n).toFixed(1)} / ${(dD / n).toFixed(1)}`
     );
   }
 

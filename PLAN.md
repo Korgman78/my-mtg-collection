@@ -141,22 +141,61 @@ npm run qr                         # QR du serveur de dev, si besoin d'Expo Go
 Pour éviter un build à chaque retouche, la piste est `expo-updates` : mises à
 jour du JavaScript à distance, sans repasser par un APK.
 
-### Prochain gain sur le scanner
+### Prochain gain sur le scanner — la piste corrigée (2026-09-02)
 
-Mesuré, chiffré, prêt à faire : un **ajustement de droites sur les quatre
-bords** de la carte. La détection actuelle trouve la carte 25 fois sur 25 mais
-la délimite mal (extrêmes de diagonale, sensibles à un pixel aberrant).
+L'enjeu n'a pas bougé : la détection délimite mal la carte, et c'est ce qui
+retient deux choses d'un coup — le levier « détection » (20/25 aujourd'hui
+contre 25/25 avec une délimitation parfaite) et **l'illustration en 2×2**,
+prête mais inutilisable en l'état, qui porterait la marge de 25 % à 38 % des
+bits quand l'index passera de 17 000 à 100 000 cartes.
 
-Ça débloquerait deux choses d'un coup :
-- le reste du levier « détection » — 21/25 aujourd'hui contre 25/25 avec une
-  détection parfaite ;
-- **l'illustration en 2×2**, prête mais inutilisable en l'état : 8-16/25 avec
-  la détection actuelle, 25/25 avec une détection parfaite. Elle porterait la
-  marge de 25 % à 38 % des bits, ce qui deviendra nécessaire quand l'index
-  passera de 16 000 à 100 000 cartes.
+**En revanche la cause était mal identifiée, et l'ajustement de droites sur
+les quatre bords ne la corrige pas.** Trois variantes essayées et mesurées sur
+`phash-eval-next fin 25`, colonne « F combine » (ce que fait vraiment l'app :
+la détection s'AJOUTE au balayage de fenêtres) sur cadrage soigné / ordinaire /
+négligé, l'existant étant à 25 / 25 / 23 :
 
-`scripts/phash-eval-next.mjs` compare les stratégies ; `scripts/scan-smoke.mjs`
-teste contre la vraie base.
+| variante | F combine | D, détection seule |
+|---|---|---|
+| ajustement de droites seul | 25 / 25 / **24** | 12 / 18 / 16 |
+| + recalage sur le maximum de gradient | 25 / 25 / **21** | 10 / 16 / 7 |
+| + recalage vers l'extérieur, rapport 63:88 | 25 / 25 / **22** | 10 / 18 / 14 |
+
+L'ajustement seul gagne donc une carte sur vingt-cinq, et les deux raffinements
+en perdent. Aucune des trois n'a été retenue : une carte sur un échantillon de
+vingt-cinq n'est pas un résultat, et la mesure géométrique montre qu'aucune ne
+touche au vrai défaut — le quadrilatère reste 10 % trop petit dans tous les cas
+(biais de largeur −9,6 % pour l'existant, −10,1 % avec l'ajustement seul).
+
+Ce que la mesure dit vraiment, établi avec `scripts/detect-precision.mjs`, qui
+composite une vraie image Scryfall à une position connue au pixel près :
+
+> **La détection ne délimite pas la carte, elle délimite son intérieur
+> imprimé.** La composante connexe couvre 28 à 38 % de la photo là où la carte
+> en occupe 80 %, et la largeur trouvée vaut **10 % de moins** que la vraie —
+> sur les quatre sets essayés (FIN, OTJ, MH3, BLB) et quel que soit le
+> cadrage. L'écart se concentre en bas : les coins hauts tombent à ~30 px du
+> vrai bord, les coins bas à 50-59 px.
+
+C'est cohérent après coup : le masque vient du gradient, donc il voit ce qui
+porte du détail. Une carte commence par une marge et une bordure unies, et se
+termine par un bloc de texte puis une ligne de collection — rien de tout ça
+n'allume un Sobel flouté. Le choix des coins par extrêmes de diagonale
+*compensait* d'ailleurs une partie de ce rétrécissement, en rognant les coins
+arrondis du flou : c'est pourquoi le remplacer par une géométrie plus juste
+dégrade le résultat.
+
+Conséquence pour qui reprend le sujet : **tant que le masque s'arrête au cadre
+imprimé, raffiner la géométrie qu'on en tire ne peut rien rapporter.** C'est le
+masque qu'il faut corriger. Pistes non essayées, par ordre de promesse
+apparente : seuil adaptatif par région plutôt que global (le bas de la carte
+est structurellement moins actif que le haut) ; croissance de région depuis
+l'intérieur jusqu'à l'arête sombre bordure/table ; ou détection de contour
+franche (Canny + Hough) au lieu d'un masque d'activité.
+
+`scripts/detect-precision.mjs` mesure la géométrie contre une vérité connue,
+`scripts/phash-eval-next.mjs` compare les stratégies de reconnaissance, et
+`scripts/scan-smoke.mjs` teste contre la vraie base.
 
 ## Checklist de mise en route (étapes manuelles)
 

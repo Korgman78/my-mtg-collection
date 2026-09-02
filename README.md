@@ -105,6 +105,7 @@ l'appareil, seules 25 empreintes de 64 bits partent vers la base.
 | `node scripts/phash-selftest.mjs` | Fige le pHash sur un vecteur de référence |
 | `node scripts/png-selftest.mjs` | Vérifie le décodeur PNG contre un vrai encodeur |
 | `node scripts/scan-e2e.mjs [set] [n]` | Mesure la reconnaissance de bout en bout |
+| `node scripts/detect-precision.mjs [sets…]` | Mesure la précision de la détection contre une vérité connue |
 
 ## Modèle de données (résumé)
 
