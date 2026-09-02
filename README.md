@@ -124,7 +124,7 @@ l'appareil, seules 25 empreintes de 64 bits partent vers la base.
 
 - [x] **Phase 0** — fondation prix : schéma, ingestion quotidienne, archives, backfill
 - [x] **Phase 1** — app Expo : auth, folders, recherche autocomplete, fiche carte + graphe
-- [ ] **Phase 2** — moteur d'alertes modulaire, push, digest hebdo par email (Resend)
+- [ ] **Phase 2** — moteur d'alertes modulaire, push, récap hebdo dans l'app
 - [ ] **Phase 3** — scanner v1 (photo → reconnaissance pHash)
 - [ ] **Phase 4** — scanner temps réel on-device (mode rafale)
 - [ ] **Phase 5** — import/export CSV, wishlist, polish

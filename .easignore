@@ -24,9 +24,6 @@ node_modules/
 expo-go-*.png
 grimoire-*.png
 
-# Aperçu du mail, régénéré par `send-digest.mjs --preview`.
-apercu-digest.html
-
 # Les archives de prix. Elles servent au backfill (`npm run backfill`) et à
 # rien d'autre ; le build n'en lit pas une ligne.
 archives/

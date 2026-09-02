@@ -55,9 +55,6 @@ export function CreateRuleModal({
   const [direction, setDirection] = useState<'up' | 'down' | 'both'>(
     editing?.direction ?? 'both'
   );
-  const [channel, setChannel] = useState<'digest' | 'immediate'>(
-    editing?.channel ?? 'digest'
-  );
   const [threshold, setThreshold] = useState(
     editing?.threshold != null ? String(editing.threshold) : '10'
   );
@@ -107,7 +104,9 @@ export function CreateRuleModal({
       threshold: needsThreshold ? parsedThreshold : null,
       direction:
         metric === 'threshold_above' ? 'up' : metric === 'threshold_below' ? 'down' : direction,
-      channel,
+      // Vestige : la colonne existe encore en base, plus personne ne la lit
+      // depuis le retrait de l'email. On écrit la valeur par défaut.
+      channel: 'digest',
       rarities: rarities.length > 0 ? rarities : null,
       min_price: parsedMin,
     };
@@ -145,7 +144,6 @@ export function CreateRuleModal({
             windowDays,
             direction,
             threshold: parsedThreshold,
-            channel,
             rarities,
             minPrice: parsedMin,
           })}
@@ -298,17 +296,6 @@ export function CreateRuleModal({
           : `Seules les cartes valant au moins ${String(parsedMin).replace('.', ',')} € aujourd’hui compteront.`}
       </AppText>
 
-      <FormField label="Notification">
-        <Segmented
-          options={[
-            { value: 'digest', label: 'Récap hebdo' },
-            { value: 'immediate', label: 'Email immédiat' },
-          ]}
-          value={channel}
-          onChange={setChannel}
-        />
-      </FormField>
-
       {failure ? (
         <AppText variant="caption" style={{ color: Colors.danger }}>
           {failure.message}
@@ -332,7 +319,6 @@ function summarise({
   windowDays,
   direction,
   threshold,
-  channel,
   rarities,
   minPrice,
 }: {
@@ -341,13 +327,13 @@ function summarise({
   windowDays: number;
   direction: 'up' | 'down' | 'both';
   threshold: number;
-  channel: 'digest' | 'immediate';
   rarities: Rarity[];
   minPrice: number | null;
 }): string {
   const amount = Number.isFinite(threshold) ? threshold.toString().replace('.', ',') : '…';
-  const how =
-    channel === 'immediate' ? 'par email dès le lendemain' : 'dans le récap hebdomadaire du dimanche';
+  // L'evaluation tourne apres l'ingestion nocturne : un mouvement du jour se
+  // lit donc le lendemain, dans le fil d'activite puis dans le recap.
+  const how = 'le lendemain dans l’app';
 
   // La rareté s'insère dans la phrase plutôt qu'en suffixe : « une commune ou
   // peu commune de ta collection » se lit, « ta collection · commune » non.

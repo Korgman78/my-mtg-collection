@@ -7,6 +7,14 @@ import type { CardRow, Finish } from '@/lib/types';
 
 export type AlertMetric = 'pct_change' | 'corridor_breakout' | 'threshold_above' | 'threshold_below';
 
+/** Canal de notification.
+ *
+ *  Vestige de l'époque où les alertes partaient par email. L'envoi a été
+ *  retiré le 2026-09-02 : les événements se lisent dans le fil d'activité et
+ *  dans le récap hebdomadaire, sans distinction. La colonne reste en base
+ *  parce que les règles existantes la portent, mais plus rien ne la lit. */
+export type AlertChannel = 'digest' | 'immediate';
+
 export type AlertRule = {
   id: string;
   user_id: string;
@@ -184,7 +192,6 @@ export function describeRule(rule: AlertRule, folderName?: string, cardName?: st
           : `prix ≤ ${rule.threshold} €`;
   const direction =
     rule.direction === 'both' ? '' : rule.direction === 'up' ? ' · hausses' : ' · baisses';
-  const channel = rule.channel === 'digest' ? 'digest hebdo' : 'email immédiat';
 
   // La rareté n'apparaît que si elle restreint quelque chose : « toutes les
   // raretés » sur chaque règle serait du bruit.
@@ -197,5 +204,5 @@ export function describeRule(rule: AlertRule, folderName?: string, cardName?: st
   // pourquoi une règle reste muette sur les cartes à deux centimes.
   const floor = rule.min_price ? ` · dès ${String(rule.min_price).replace('.', ',')} €` : '';
 
-  return `${scope}${rarities}${floor} · ${metric}${direction} · ${channel}`;
+  return `${scope}${rarities}${floor} · ${metric}${direction}`;
 }

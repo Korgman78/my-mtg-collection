@@ -16,6 +16,7 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
+  Pill,
   Screen,
   SectionHeader,
   Skeleton,
@@ -32,6 +33,7 @@ import {
   type AlertRule,
 } from '@/lib/alerts';
 import { formatDate, formatEur } from '@/lib/format';
+import { reportPeriod, reportSummary, useReports, type WeeklyReport } from '@/lib/reports';
 import { supabase } from '@/lib/supabase';
 import type { Folder } from '@/lib/types';
 
@@ -79,6 +81,14 @@ export default function AlertsScreen() {
         onRefresh={refetch}
         ListHeaderComponent={
           <View style={styles.headerBlock}>
+            {/* Le récap en tête : c'est le bloc qu'on vient lire, les règles
+                ne se consultent qu'en cas de doute. */}
+            <SectionHeader
+              title="Récap hebdomadaire"
+              action={{ label: 'Archives', icon: 'layers', onPress: () => router.push('/reports') }}
+            />
+            <WeeklyReportCard />
+
             <SectionHeader title="Mes règles" />
             {data.rules.length === 0 ? (
               <Surface style={styles.hintCard}>
@@ -157,6 +167,90 @@ export default function AlertsScreen() {
         }}
       />
     </Screen>
+  );
+}
+
+/** Le dernier récap, ou ce qui en tient lieu.
+ *
+ *  Les quatre états sont distincts à dessein. Un écran qui affiche « aucun
+ *  rapport » alors que la requête a échoué est exactement la panne muette que
+ *  ce dépôt a déjà payée trois fois — ici, une table absente veut dire que la
+ *  migration n'a pas été appliquée, et on le dit.
+ *
+ *  L'échec est contenu à cette carte : React Query isole les requêtes, donc
+ *  les règles et le fil d'activité s'affichent quoi qu'il arrive. */
+function WeeklyReportCard() {
+  const router = useRouter();
+  const { data, error, isLoading } = useReports();
+
+  if (isLoading) {
+    return (
+      <Surface tone="plate" style={styles.reportCard}>
+        <Skeleton width={124} height={9} />
+        <Skeleton width={168} height={22} radius={Radius.md} />
+        <Skeleton width={196} height={10} />
+      </Surface>
+    );
+  }
+
+  if (error) {
+    return (
+      <Surface style={styles.hintCard}>
+        <AppText variant="body" style={{ color: Colors.textSecondary }}>
+          Le récap n&apos;a pas pu être chargé : {error.message}
+        </AppText>
+        <AppText variant="caption">
+          Si la table est introuvable, c&apos;est que la migration
+          20260902120000_weekly_reports.sql n&apos;a pas encore été appliquée.
+        </AppText>
+      </Surface>
+    );
+  }
+
+  const latest = data?.[0];
+  if (!latest) {
+    return (
+      <Surface style={styles.hintCard}>
+        <AppText variant="body" style={{ color: Colors.textSecondary }}>
+          Aucun récap pour l&apos;instant. Il est fabriqué chaque dimanche : valeur de la
+          collection, mouvements de la semaine, et les alertes déclenchées.
+        </AppText>
+      </Surface>
+    );
+  }
+
+  return <ReportSummaryCard report={latest} onPress={() => router.push({ pathname: '/report/[id]', params: { id: latest.id } })} />;
+}
+
+function ReportSummaryCard({ report, onPress }: { report: WeeklyReport; onPress: () => void }) {
+  const change = report.value_change_eur;
+  const up = change !== null && change > 0;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Ouvrir le récap du ${reportPeriod(report)}`}
+      onPress={onPress}
+      style={({ pressed }) => pressed && { opacity: 0.75 }}>
+      <Surface tone="plate" style={styles.reportCard}>
+        <View style={styles.reportHead}>
+          <AppText variant="overline">{reportPeriod(report)}</AppText>
+          {report.seen_at === null ? <Pill label="Nouveau" tone="accent" /> : null}
+        </View>
+
+        <AppText variant="display">{formatEur(report.value_eur)}</AppText>
+
+        <View style={styles.reportFoot}>
+          {change !== null && Math.abs(change) >= 0.01 ? (
+            <AppText variant="caption" style={{ color: up ? Colors.up : Colors.down, fontWeight: '600' }}>
+              {up ? '+' : '−'}
+              {formatEur(Math.abs(change))}
+            </AppText>
+          ) : null}
+          <AppText variant="caption">{reportSummary(report)}</AppText>
+        </View>
+      </Surface>
+    </Pressable>
   );
 }
 
@@ -323,7 +417,10 @@ function AlertsSkeleton() {
 const styles = StyleSheet.create({
   list: { paddingHorizontal: Space.lg, paddingBottom: Space.xxl, gap: Space.sm, flexGrow: 1 },
   headerBlock: { gap: Space.md, marginBottom: Space.xs },
-  hintCard: { gap: Space.lg },
+  hintCard: { gap: Space.md },
+  reportCard: { gap: Space.xs, alignItems: 'flex-start', paddingVertical: Space.xl },
+  reportHead: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
+  reportFoot: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, flexWrap: 'wrap' },
 
   ruleCard: { flexDirection: 'row', alignItems: 'center', gap: Space.md, padding: Space.lg },
   ruleBody: { flex: 1, gap: 2 },

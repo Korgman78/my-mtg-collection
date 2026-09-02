@@ -8,7 +8,7 @@
 App de collection Magic: The Gathering, belle et modulaire :
 dossiers manuels, ajout par recherche intelligente ou scan caméra,
 suivi des prix avec couloirs, alertes configurables sur les mouvements,
-digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
+récap hebdo dans l'app. Objectif scan : nettement plus rapide que Dragon Shield
 (reconnaissance on-device, mode rafale).
 
 ## Stack (décisions arrêtées)
@@ -20,7 +20,7 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 | Données cartes & prix | Scryfall (bulk quotidien + API autocomplete) | EUR Cardmarket / USD TCGplayer ; attribution obligatoire |
 | Historique prix | Construit par nous (Scryfall n'en fournit pas) | snapshots en base pour les cartes suivies + archives complètes dans `archives/` |
 | Ingestion | GitHub Actions, cron 04:30 UTC | `.github/workflows/daily-prices.yml` |
-| Emails | Resend (phase 2) | digest hebdo |
+| Récap hebdo | Table `weekly_reports` + écran Alertes | fabriqué le dimanche par GitHub Actions ; l'email Resend a été retiré le 2026-09-02 |
 | Push | Expo Notifications | **débloqué** : l'app a un build natif depuis le 2026-08-19 |
 
 ## Phases
@@ -39,15 +39,30 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
   canaux digest/immédiat ; dédup sur la fenêtre). Évaluation branchée dans
   `ingest.mjs` après l'ingestion. Écran Alertes dans l'app (règles avec
   activation/suppression + fil d'événements + badge non-lus au dashboard +
-  bouton alerte sur la fiche carte). Emails via Resend : `send-digest.mjs`
-  (immédiat après ingestion, digest hebdo le dimanche).
+  bouton alerte sur la fiche carte).
   Migration appliquée en base et code commité le 2026-08-18.
-  **Reste manuel** : secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM`.
+  L'envoi par email, jamais fonctionnel, a été retiré le 2026-09-02 —
+  voir phase 2.6.
 - [x] **Phase 2.5 — Refonte UI** *(livrée 2026-08-18)*
   Direction sobre & premium : palette neutre + accent froid unique réservé
   aux actions, jeu d'icônes SVG maison en remplacement des emoji, système
   de primitives dans `ui.tsx`, barre d'onglets Collection / Alertes.
   Actions cachées derrière un appui long rendues explicites.
+- [x] **Phase 2.6 — Récap hebdomadaire dans l'app** *(2026-09-02)*
+  Le digest email est supprimé — script, workflow, et l'étape d'envoi de
+  l'ingestion nocturne. Il n'a jamais rien envoyé : mesuré le 2026-09-02,
+  l'étape durait 0 seconde sur cinq exécutions, soit le chemin
+  « RESEND_API_KEY absent », qui sort avant même de se connecter à la base.
+  Douze jours de silence, et des runs verts.
+  À la place, une table `weekly_reports` fabriquée le dimanche par
+  `build-weekly-report.mjs`, et lue dans l'onglet Alertes : dernier rapport en
+  tête, archives derrière un bouton, dix rapports conservés par utilisateur.
+  Le contenu est **figé à la fabrication** — `card_price_stats` raisonne en
+  fenêtre glissante depuis aujourd'hui, donc un rapport recalculé plus tard
+  raconterait autre chose que la semaine qu'il prétend décrire.
+  Le rapport ne dépend plus des règles d'alerte : valeur, mouvements de la
+  semaine, puis les alertes s'il y en a. L'email, lui, était vide dès qu'aucune
+  règle ne se déclenchait — ce qui était la règle avec des seuils à +50 %.
 - [x] **Phase 3 — Scanner v1** *(code livré 2026-08-18)*
   Photo → découpe du cadre → pHash **calculé sur le téléphone** → distance de
   Hamming en SQL → candidats classés → confirmation → ajout.
@@ -83,7 +98,7 @@ digest hebdo par email. Objectif scan : nettement plus rapide que Dragon Shield
 
 L'app s'appelle **My MTG Collection** et tourne en V0.1 sur un S24 Ultra,
 installée depuis un APK. Le scanner reconnaît les cartes, l'historique de prix
-a commencé, et le mail hebdo attend ses secrets Resend.
+a commencé.
 
 `master` et `phase-2-alerts` sont au même point : la branche n’a plus de
 raison d'être, on peut la supprimer et repartir d'une branche par sujet.
@@ -120,10 +135,9 @@ seront accumulés.
 
 ### Reste côté toi
 
-- Les secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM`, sans lesquels le
-  mail hebdo — redessiné le 2026-08-19, avec visuels de cartes — ne part
-  pas. `node --env-file=.env scripts/send-digest.mjs --preview` en montre le
-  rendu sans rien envoyer.
+- Appliquer `supabase/migrations/20260902120000_weekly_reports.sql` dans le
+  SQL Editor. C'est la seule étape manuelle du récap hebdo : sans elle,
+  l'écran Alertes ne trouvera aucun rapport à afficher.
 - Une règle d'alerte plus sensible (±5 % sur 1 jour) si tu veux éprouver la
   chaîne d'alerte de bout en bout : les deux règles actuelles guettent +50 %
   et +100 % sur 7 jours, volontairement rares.
@@ -210,7 +224,7 @@ franche (Canny + Hough) au lieu d'un masque d'activité.
       le fichier contenait encore `placeholder-…` d'où un `Invalid API key`
 - [ ] « Confirm email » désactivé dans Supabase Auth (`mailer_autoconfirm`
       était encore à `false` le 2026-08-18)
-- [ ] Secrets GitHub `RESEND_API_KEY` et `DIGEST_FROM` (pour le digest email)
+- [ ] Migration `20260902120000_weekly_reports.sql` appliquée (récap hebdo)
 - [x] Migration `20260818120000_card_hashes.sql` appliquée (scanner)
 - [x] Sets principaux indexés — 39 sets, 15 995 empreintes
 - [x] Un vrai scan réussi (APK sur S24 Ultra)

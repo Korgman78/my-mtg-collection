@@ -1,0 +1,43 @@
+name: Weekly report
+
+# Fabrique le récap hebdomadaire lu dans l'app.
+#
+# Remplace « Weekly digest email ». Ce job ne demande plus qu'un seul secret,
+# DATABASE_URL — l'ancien en réclamait deux de plus, RESEND_API_KEY et
+# DIGEST_FROM, qui n'ont jamais été posés. Le job passait alors vert sans rien
+# envoyer, douze jours durant, parce que `send-digest.mjs` traitait une clé
+# absente comme un cas bénin.
+#
+# Leçon retenue ici : ce job échoue si la base est injoignable, et il dit dans
+# son journal ce qu'il a écrit. Un job vert doit vouloir dire quelque chose.
+
+on:
+  schedule:
+    # Dimanche 17:00 UTC, l'horaire de l'ancien digest.
+    - cron: '0 17 * * 0'
+  workflow_dispatch:
+
+# Deux fabrications simultanées écriraient le même rapport : la clé
+# (user_id, period_end) l'empêcherait, mais autant ne pas les lancer.
+concurrency:
+  group: weekly-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build weekly report
+        run: node scripts/build-weekly-report.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
