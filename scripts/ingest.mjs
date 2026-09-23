@@ -34,6 +34,25 @@ function chunks(array, size) {
   return out;
 }
 
+/** Données de jeu d'une carte (cube builder). Une carte double face n'a ni
+ *  coût ni couleurs à la racine : on prend le coût de la face avant et
+ *  l'union des couleurs des faces. Même règle que `cardRules` côté app
+ *  (mobile/src/lib/scryfall.ts) — les deux doivent écrire la même chose. */
+function cardRules(card) {
+  const faces = card.card_faces ?? [];
+  return [
+    card.mana_cost ?? faces[0]?.mana_cost ?? null,
+    card.cmc ?? null,
+    card.type_line ?? null,
+    card.oracle_text ??
+      (faces.length ? faces.map((f) => f.oracle_text ?? '').join('\n//\n') : null),
+    card.colors ?? [...new Set(faces.flatMap((f) => f.colors ?? []))],
+    card.color_identity ?? [],
+    card.keywords ?? [],
+    card.produced_mana ?? null,
+  ];
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -102,6 +121,10 @@ async function main() {
 
   const snapshots = [];
   const meta = [];
+  // Cartes jouables en peasant : au moins une impression papier en commune
+  // ou peu commune. Se lit sur TOUTES les impressions, d'où sa place ici,
+  // dans le seul passage qui les voit toutes.
+  const peasantOracles = new Set();
   let paperCards = 0;
 
   // Décompression puis lecture ligne à ligne. `readline` fait le découpage
@@ -117,6 +140,9 @@ async function main() {
     const card = JSON.parse(line);
     if (!card.games?.includes('paper')) continue;
     paperCards++;
+    if (card.oracle_id && (card.rarity === 'common' || card.rarity === 'uncommon')) {
+      peasantOracles.add(card.oracle_id);
+    }
     const p = card.prices ?? {};
     await writeLine(
       [card.id, p.eur, p.eur_foil, p.eur_etched, p.usd, p.usd_foil, p.usd_etched]
@@ -137,6 +163,7 @@ async function main() {
         img.small ?? null,
         card.finishes ?? [],
         card.released_at ?? null,
+        ...cardRules(card),
       ]);
     }
   }
@@ -159,15 +186,50 @@ async function main() {
         batch.flat().map((v) => v ?? null)
       );
     }
+    // Les colonnes de jeu arrivent avec la migration des cubes. Tant qu'elle
+    // n'est pas appliquée, les écrire ferait échouer la transaction entière
+    // — donc les prix du jour. On regarde avant d'écrire.
+    const hasRules =
+      (
+        await db.query(
+          `select 1 from information_schema.columns
+           where table_schema = 'public' and table_name = 'cards' and column_name = 'type_line'`
+        )
+      ).rowCount > 0;
+    if (!hasRules) console.warn('Colonnes de jeu absentes (migration cubes non appliquée) : sautées.');
+
     for (const m of meta) {
       await db.query(
-        `update cards set oracle_id = $2, name = $3, set_code = $4, collector_number = $5,
-           rarity = $6, image_normal = $7, image_small = $8, finishes = $9,
-           released_at = $10, updated_at = now()
-         where id = $1`,
-        m
+        hasRules
+          ? `update cards set oracle_id = $2, name = $3, set_code = $4, collector_number = $5,
+               rarity = $6, image_normal = $7, image_small = $8, finishes = $9,
+               released_at = $10, mana_cost = $11, cmc = $12, type_line = $13,
+               oracle_text = $14, colors = $15, color_identity = $16, keywords = $17,
+               produced_mana = $18, updated_at = now()
+             where id = $1`
+          : `update cards set oracle_id = $2, name = $3, set_code = $4, collector_number = $5,
+               rarity = $6, image_normal = $7, image_small = $8, finishes = $9,
+               released_at = $10, updated_at = now()
+             where id = $1`,
+        hasRules ? m : m.slice(0, 10)
       );
     }
+    // Même prudence que pour les colonnes de jeu : sans la migration du
+    // helper, la colonne n'existe pas et l'écrire ferait tomber les prix.
+    const hasPeasant =
+      (
+        await db.query(
+          `select 1 from information_schema.columns
+           where table_schema = 'public' and table_name = 'cards' and column_name = 'peasant'`
+        )
+      ).rowCount > 0;
+    if (hasPeasant) {
+      await db.query(
+        'update cards set peasant = (oracle_id = any($1::uuid[])) where oracle_id is not null',
+        [[...peasantOracles]]
+      );
+    }
+
     await db.query('select public.snapshot_collection_values()');
     await db.query('commit');
   } catch (err) {
