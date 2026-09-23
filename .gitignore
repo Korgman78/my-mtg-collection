@@ -15,3 +15,7 @@ grimoire-*.png
 # paquets tires par eslint dont le build n'a pas besoin. Sans verrou commite,
 # EAS lance `npm install` et resout pour sa propre plateforme.
 mobile/package-lock.json
+
+# Dossier de travail du cube helper : exports de la collection, tags en
+# attente, bulk Scryfall en cache (80 Mo). Local et personnel.
+.cube-helper/

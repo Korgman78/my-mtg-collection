@@ -68,6 +68,7 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: Colors.bg },
             }}>
             <Stack.Screen name="add-card" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="cube-add" options={{ presentation: 'modal' }} />
           </Stack>
         </AuthGate>
       </ThemeProvider>

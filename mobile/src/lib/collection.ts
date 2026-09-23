@@ -15,7 +15,7 @@ import {
   type PriceSnapshot,
 } from '@/lib/types';
 
-function throwIfError<T>(res: { data: T | null; error: { message: string } | null }): T {
+export function throwIfError<T>(res: { data: T | null; error: { message: string } | null }): T {
   if (res.error) throw new Error(res.error.message);
   return res.data as T;
 }
@@ -34,7 +34,7 @@ const PAGE = 1000;
 
 /** Rapatrie toutes les pages d'une requête, jusqu'à en recevoir une
  *  incomplète — c'est le seul signal de fin que PostgREST donne. */
-async function selectAll<T>(
+export async function selectAll<T>(
   page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
 ): Promise<T[]> {
   const all: T[] = [];
@@ -438,7 +438,7 @@ export function useAddCard() {
 
 /** Lignes d'une carte Scryfall vers nos trois tables. Partagé par l'ajout à
  *  l'unité et par le bloc de set, pour qu'ils écrivent exactement la même chose. */
-function cardRows(card: ScryfallCard, today: string) {
+export function cardRows(card: ScryfallCard, today: string) {
   const images = cardImages(card);
   return {
     card: {

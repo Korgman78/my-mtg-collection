@@ -9,7 +9,10 @@
   "scripts": {
     "ingest": "node scripts/ingest.mjs",
     "backfill": "node scripts/backfill.mjs",
-    "qr": "node scripts/dev-qr.mjs"
+    "qr": "node scripts/dev-qr.mjs",
+    "cube:export": "node --env-file=.env scripts/cube-helper/export.mjs",
+    "cube:pool": "node scripts/cube-helper/pool.mjs",
+    "cube:import": "node --env-file=.env scripts/cube-helper/import.mjs"
   },
   "dependencies": {
     "jpeg-js": "^0.4.4",
