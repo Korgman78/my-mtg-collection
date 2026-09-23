@@ -44,7 +44,9 @@ import {
 } from '@/components/ui';
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useAddScannedCard, useFoldersLite, useHashedSets } from '@/lib/collection';
+import { useAddToCube, useCubes } from '@/lib/cubes';
 import { formatEur } from '@/lib/format';
+import { goBack } from '@/lib/nav';
 import {
   CARD_ASPECT,
   confidenceOf,
@@ -53,7 +55,7 @@ import {
   matchPhoto,
   type ScanMatch,
 } from '@/lib/scan';
-import { fetchCardsByIds, type ScryfallCard } from '@/lib/scryfall';
+import { fetchCardById, fetchCardsByIds, type ScryfallCard } from '@/lib/scryfall';
 
 type Stage =
   | { step: 'idle' }
@@ -77,39 +79,46 @@ export default function ScanScreen() {
   const folders = useFoldersLite();
   const hashedSets = useHashedSets();
   const addScanned = useAddScannedCard();
+  const addToCube = useAddToCube();
 
-  // Deux chemins d'arrivée. Depuis un dossier, la destination est connue et
-  // on n'a rien à demander. Depuis l'onglet, on ne devine PAS : ranger des
-  // cartes dans un dossier au hasard parce qu'il était premier dans la liste
-  // est le genre d'erreur qu'on ne remarque qu'une fois le mal fait.
-  const { folderId: folderParam } = useLocalSearchParams<{ folderId?: string }>();
+  // Le scanner s'ouvre depuis ce qu'il remplit : un dossier ou un cube.
+  // Sans destination (lien direct, rechargement), on ne devine PAS : ranger
+  // des cartes dans un dossier au hasard parce qu'il était premier dans la
+  // liste est le genre d'erreur qu'on ne remarque qu'une fois le mal fait.
+  const { folderId: folderParam, cubeId } = useLocalSearchParams<{
+    folderId?: string;
+    cubeId?: string;
+  }>();
+  const cubes = useCubes();
+  const cubeName = cubeId ? (cubes.data?.find((c) => c.id === cubeId)?.name ?? null) : null;
   const [chosenFolder, setChosenFolder] = useState<string | null>(null);
 
-  // Le paramètre survit à la navigation par onglets : revenir sur l'onglet
-  // Scanner après être passé par un dossier resterait verrouillé dessus.
-  // D'où cette porte de sortie explicite.
+  // Porte de sortie : scanner vers un autre dossier que celui d'où l'on vient.
   const [unlocked, setUnlocked] = useState(false);
   const lockedToFolder = !!folderParam && !unlocked;
   const targetFolder = lockedToFolder ? (folderParam ?? null) : chosenFolder;
-  const targetName = folders.data?.find((f) => f.id === targetFolder)?.name ?? null;
+  const targetName = cubeId
+    ? cubeName
+    : (folders.data?.find((f) => f.id === targetFolder)?.name ?? null);
+  const hasTarget = !!cubeId || !!targetFolder;
 
   // Retour vers le dossier d'où l'on vient.
   //
-  // `/scan` est un onglet : y aller depuis un dossier quitte la pile pour la
-  // barre d'onglets, et l'écran du dossier n'est plus au-dessus. Le retour
-  // natif Android est alors traité par la barre elle-même, qui revient à son
-  // premier onglet — on atterrit sur la liste de tous les dossiers, pas sur
-  // celui qu'on était en train de remplir.
-  //
-  // `dismissTo` plutôt que `push` : si l'écran du dossier est encore dans la
-  // pile on y redescend, sinon il remplace l'écran courant. Dans les deux cas
-  // la pile ne grossit pas, et on ne peut pas empiler deux fois le même
-  // dossier l'un sur l'autre.
+  // `dismissTo` plutôt que `back` : si l'écran du dossier est encore dans la
+  // pile on y redescend, sinon il remplace l'écran courant (arrivée par un
+  // lien, rechargement). Dans les deux cas la pile ne grossit pas, et on ne
+  // peut pas empiler deux fois le même dossier l'un sur l'autre.
   const backToFolder = useCallback(() => {
     if (!folderParam) return false;
     router.dismissTo({ pathname: '/folder/[id]', params: { id: folderParam } });
     return true;
   }, [folderParam, router]);
+
+  const leave = () => {
+    if (cubeId) goBack({ pathname: '/cube/[id]', params: { id: cubeId } });
+    else if (lockedToFolder) backToFolder();
+    else goBack('/');
+  };
 
   // On n'intercepte que tant que l'écran sert ce dossier-là. Une fois la
   // porte de sortie prise, `folderParam` est un reste d'URL et non une
@@ -212,7 +221,30 @@ export default function ScanScreen() {
     }
   }
 
+  async function addMatchToCube(match: ScanMatch, printing?: ScryfallCard) {
+    if (!cubeId) return;
+    try {
+      const card = printing ?? (await fetchCardById(match.card_id));
+      const result = await addToCube.mutateAsync({ cubeId, cards: [card] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // Un cube est singleton : on dit franchement qu'une carte y était déjà,
+      // plutôt que de laisser croire qu'elle vient d'entrer.
+      setAdded(
+        result.duplicates.length
+          ? `${match.name} était déjà dans le cube. Carte suivante.`
+          : `${match.name} ajoutée au cube. Carte suivante.`
+      );
+      setStage({ step: 'idle' });
+    } catch (err) {
+      setStage({ step: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   function addMatch(match: ScanMatch, printing?: ScryfallCard) {
+    if (cubeId) {
+      addMatchToCube(match, printing);
+      return;
+    }
     const folder = targetFolder;
     if (!folder) return;
     addScanned.mutate(
@@ -234,7 +266,7 @@ export default function ScanScreen() {
           // une impression qui n'existe pas en foil retombe sur ce qu'elle a.
           const suffixe = result.finish === 'nonfoil' ? '' : ' · ✦ foil';
           const total = result.merged || quantity > 1 ? ` ×${result.quantity}` : '';
-          setAdded(match.name + total + suffixe);
+          setAdded(`${match.name}${total}${suffixe} ajoutée. Carte suivante.`);
           // La quantité retombe à 1, contrairement au choix foil qui, lui,
           // reste d'un scan à l'autre. Un « ×4 » oublié ajouterait quatre
           // exemplaires de chaque carte suivante sans rien dire — le genre
@@ -254,8 +286,8 @@ export default function ScanScreen() {
       <Screen>
         <AppBar
           title="Scanner"
-          onBack={lockedToFolder ? () => backToFolder() : undefined}
-          backLabel={targetName ? `Retour à « ${targetName} »` : 'Retour au dossier'}
+          onBack={leave}
+          backLabel={targetName ? `Retour à « ${targetName} »` : 'Retour'}
         />
         <EmptyState
           icon="card"
@@ -305,8 +337,8 @@ export default function ScanScreen() {
     <Screen>
       <AppBar
         title="Scanner"
-        onBack={lockedToFolder ? () => backToFolder() : undefined}
-        backLabel={targetName ? `Retour à « ${targetName} »` : 'Retour au dossier'}
+        onBack={leave}
+        backLabel={targetName ? `Retour à « ${targetName} »` : 'Retour'}
         subtitle={
           targetName
             ? `Vers « ${targetName} »`
@@ -352,7 +384,7 @@ export default function ScanScreen() {
           <View style={styles.addedLine}>
             <Icon name="check" size={15} color={Colors.up} strokeWidth={2.2} />
             <AppText variant="caption" style={{ color: Colors.up }}>
-              {added} ajoutée. Carte suivante.
+              {added}
             </AppText>
           </View>
         ) : (
@@ -362,7 +394,7 @@ export default function ScanScreen() {
         )}
 
         {/* Depuis un dossier, la destination est fixée : pas de sélecteur. */}
-        {lockedToFolder ? (
+        {cubeId ? null : lockedToFolder ? (
           <Button
             label="Changer de dossier"
             icon="folder"
@@ -386,11 +418,11 @@ export default function ScanScreen() {
           icon="card"
           size="lg"
           onPress={capture}
-          loading={stage.step === 'working' || addScanned.isPending}
-          disabled={!targetFolder}
+          loading={stage.step === 'working' || addScanned.isPending || addToCube.isPending}
+          disabled={!hasTarget}
         />
 
-        {!targetFolder ? (
+        {!hasTarget ? (
           <AppText variant="caption" style={{ color: Colors.accent }}>
             {folders.data?.length === 0
               ? 'Crée d’abord un dossier depuis l’onglet Collection.'
@@ -408,7 +440,8 @@ export default function ScanScreen() {
 
       <ResultSheet
         stage={stage}
-        pending={addScanned.isPending}
+        pending={addScanned.isPending || addToCube.isPending}
+        forCube={!!cubeId}
         onPick={addMatch}
         foil={foil}
         onFoilChange={setFoil}
@@ -517,6 +550,7 @@ function ResultSheet({
   quantity,
   onQuantityChange,
   onClose,
+  forCube = false,
 }: {
   stage: Stage;
   pending: boolean;
@@ -526,6 +560,8 @@ function ResultSheet({
   quantity: number;
   onQuantityChange: (v: number) => void;
   onClose: () => void;
+  /** Un cube ne connaît ni finition ni quantité : il compte des noms. */
+  forCube?: boolean;
 }) {
   const visible = stage.step === 'results' || stage.step === 'error';
   const matches = stage.step === 'results' ? stage.matches : [];
@@ -613,6 +649,8 @@ function ResultSheet({
               Le choix reste posé d'un scan à l'autre : on trie rarement une
               carte foil isolée, plutôt une pile. Le bandeau de confirmation
               rappelle ensuite ce qui a été enregistré. */}
+          {forCube ? null : (
+          <>
           <Segmented
             options={[
               { value: 'nonfoil', label: 'Normale' },
@@ -630,6 +668,8 @@ function ResultSheet({
             <AppText variant="overline">Exemplaires</AppText>
             <Stepper value={quantity} onChange={onQuantityChange} />
           </View>
+          </>
+          )}
 
           {matches.map((m, i) => {
             const printing = printings.data?.get(m.card_id);

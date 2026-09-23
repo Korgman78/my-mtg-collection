@@ -29,7 +29,22 @@ export type ScryfallCard = {
   finishes: string[];
   games: string[];
   image_uris?: { small?: string; normal?: string };
-  card_faces?: { image_uris?: { small?: string; normal?: string } }[];
+  card_faces?: {
+    image_uris?: { small?: string; normal?: string };
+    mana_cost?: string;
+    type_line?: string;
+    oracle_text?: string;
+    colors?: string[];
+  }[];
+  // Données de jeu, utilisées par le cube builder.
+  mana_cost?: string;
+  cmc?: number;
+  type_line?: string;
+  oracle_text?: string;
+  colors?: string[];
+  color_identity?: string[];
+  keywords?: string[];
+  produced_mana?: string[];
   prices: {
     eur: string | null;
     eur_foil: string | null;
@@ -42,6 +57,28 @@ export type ScryfallCard = {
 
 export function cardImages(card: ScryfallCard): { small?: string; normal?: string } {
   return card.image_uris ?? card.card_faces?.[0]?.image_uris ?? {};
+}
+
+/** Données de jeu d'une carte, au format des colonnes de `cards`.
+ *
+ *  Une carte double face n'a ni coût ni couleurs à la racine : on prend le
+ *  coût de la face avant et l'union des couleurs des faces. Même règle que
+ *  `cardRules` dans scripts/ingest.mjs — les deux doivent écrire la même
+ *  chose, sinon une carte changerait de couleur à la première nuit. */
+export function cardRules(card: ScryfallCard) {
+  const faces = card.card_faces ?? [];
+  return {
+    mana_cost: card.mana_cost ?? faces[0]?.mana_cost ?? null,
+    cmc: card.cmc ?? null,
+    type_line: card.type_line ?? null,
+    oracle_text:
+      card.oracle_text ??
+      (faces.length ? faces.map((f) => f.oracle_text ?? '').join('\n//\n') : null),
+    colors: card.colors ?? [...new Set(faces.flatMap((f) => f.colors ?? []))],
+    color_identity: card.color_identity ?? [],
+    keywords: card.keywords ?? [],
+    produced_mana: card.produced_mana ?? null,
+  };
 }
 
 /** Suggestions de noms dès 2 caractères tapés. */
@@ -98,6 +135,67 @@ export async function fetchCardsByIds(ids: string[]): Promise<Map<string, Scryfa
 
   const json = await res.json();
   return new Map(((json.data ?? []) as ScryfallCard[]).map((card) => [card.id, card]));
+}
+
+/** L'impression par défaut d'une carte, par son nom exact. C'est celle que
+ *  Scryfall montre en tête de fiche : la plus récente en papier, hors
+ *  variantes. Pour un cube, l'édition importe peu — l'illustration suffit. */
+export async function fetchNamedCard(name: string): Promise<ScryfallCard> {
+  const res = await fetch(`${BASE}/cards/named?exact=${encodeURIComponent(name)}`, {
+    headers: HEADERS,
+  });
+  if (!res.ok) throw new Error(`Scryfall ne connaît pas « ${name} ».`);
+  return (await res.json()) as ScryfallCard;
+}
+
+/** Résolution d'une liste de noms, par lots de 75 (`/cards/collection`).
+ *
+ *  Scryfall renvoie à part, dans `not_found`, les noms qu'il ne reconnaît
+ *  pas : on les remonte tels quels pour que l'écran les montre, plutôt que
+ *  de laisser une liste de 360 cartes arriver à 352 sans dire lesquelles
+ *  manquent. */
+export async function fetchCardsByNames(
+  names: string[],
+  onProgress?: (done: number, total: number) => void
+): Promise<{ found: ScryfallCard[]; notFound: string[] }> {
+  const found: ScryfallCard[] = [];
+  const notFound: string[] = [];
+
+  for (let i = 0; i < names.length; i += 75) {
+    if (i > 0) await sleep(PAGE_DELAY_MS);
+    const batch = names.slice(i, i + 75);
+    const res = await fetch(`${BASE}/cards/collection`, {
+      method: 'POST',
+      headers: { ...HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) }),
+    });
+    if (!res.ok) throw new Error(`Scryfall a répondu ${res.status}.`);
+    const json = await res.json();
+    found.push(...((json.data ?? []) as ScryfallCard[]));
+    notFound.push(...((json.not_found ?? []) as { name?: string }[]).map((n) => n.name ?? '?'));
+    onProgress?.(Math.min(i + 75, names.length), names.length);
+  }
+
+  // Seconde chance, une par une, en recherche approximative. Le lot exige
+  // le nom exact, et refuse même certains noms exacts : « Fire // Ice » y
+  // est introuvable (mesuré), alors que `named?fuzzy` la trouve — comme il
+  // rattrape « lightning blot ». Au-delà de 40 ratés, la liste a un autre
+  // problème qu'une faute de frappe : on ne martèle pas Scryfall pour ça.
+  const stillMissing: string[] = [];
+  for (const name of notFound) {
+    if (notFound.length > 40) {
+      stillMissing.push(name);
+      continue;
+    }
+    await sleep(PAGE_DELAY_MS);
+    const res = await fetch(`${BASE}/cards/named?fuzzy=${encodeURIComponent(name)}`, {
+      headers: HEADERS,
+    });
+    if (res.ok) found.push((await res.json()) as ScryfallCard);
+    else stillMissing.push(name);
+  }
+
+  return { found, notFound: stillMissing };
 }
 
 /* -------------------------------------------------------------------------- */

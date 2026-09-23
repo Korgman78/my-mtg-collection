@@ -22,6 +22,52 @@ export type CardRow = {
   image_small: string | null;
   finishes: string[];
   released_at: string | null;
+  // Données de jeu (migration cubes). Nulles tant que ni l'app ni
+  // l'ingestion ne les ont remplies pour cette carte.
+  mana_cost?: string | null;
+  cmc?: number | null;
+  type_line?: string | null;
+  oracle_text?: string | null;
+  colors?: string[] | null;
+  color_identity?: string[] | null;
+  keywords?: string[] | null;
+  produced_mana?: string[] | null;
+};
+
+export type Cube = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  target_size: number | null;
+  color: string | null;
+  created_at: string;
+};
+
+export type CubeCard = {
+  id: string;
+  cube_id: string;
+  card_id: string;
+  added_at: string;
+  card: CardRow;
+};
+
+export type ManaColor = 'W' | 'U' | 'B' | 'R' | 'G';
+
+export type CubeArchetype = {
+  id: string;
+  cube_id: string;
+  name: string;
+  colors: ManaColor[];
+  description: string | null;
+  position: number;
+  created_at: string;
+};
+
+export type ArchetypeLink = {
+  archetype_id: string;
+  cube_card_id: string;
+  is_key: boolean;
 };
 
 export type CollectionItem = {

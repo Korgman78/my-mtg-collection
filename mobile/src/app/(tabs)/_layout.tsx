@@ -2,8 +2,13 @@
 //
 // Pourquoi des onglets : les alertes vivaient derrière une icône muette dans
 // un coin de l'en-tête, et personne ne les trouvait. Une destination visible
-// en permanence règle le problème une fois pour toutes. L'emplacement du
-// milieu, réservé de longue date, est occupé par le scanner depuis la phase 3.
+// en permanence règle le problème une fois pour toutes.
+//
+// Le scanner a occupé l'emplacement du milieu pendant la phase 3. Il n'a
+// plus d'onglet : on scanne toujours VERS quelque chose (un dossier, un
+// cube), et l'onglet obligeait à choisir la destination après coup. Il
+// s'ouvre désormais depuis le dossier ou le cube à remplir. Sa place est
+// reprise, à droite, par le cube builder.
 //
 // SDK 54 : `expo-router/js-tabs` n'existe pas encore (il arrive en 56),
 // l'entrée correcte est `expo-router`. À reprendre le jour où le projet
@@ -52,13 +57,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="scan"
-        options={{
-          title: 'Scanner',
-          tabBarIcon: ({ color }) => <Icon name="card" size={21} color={color} />,
-        }}
-      />
-      <Tabs.Screen
         name="trends"
         options={{
           title: 'Tendances',
@@ -71,6 +69,13 @@ export default function TabsLayout() {
           title: 'Alertes',
           tabBarIcon: ({ color }) => <Icon name="bell" size={21} color={color} />,
           tabBarBadge: unseen > 0 ? (unseen > 9 ? '9+' : unseen) : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="cubes"
+        options={{
+          title: 'Cubes',
+          tabBarIcon: ({ color }) => <Icon name="cube" size={21} color={color} />,
         }}
       />
     </Tabs>
